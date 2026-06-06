@@ -35,11 +35,15 @@ namespace CardBattle
 
         public Color Tint = Color.white;
 
-        public static CardData Monster(string name, int atk, int hp, Color tint, bool taunt = false, bool charge = false)
-            => new CardData { Name = name, Type = CardType.Monster, Attack = atk, Health = hp, Tint = tint, Taunt = taunt, Charge = charge };
+        // Optional Resources path to a full pre-rendered card face. When set, the whole
+        // image is shown as the card; otherwise the procedural placeholder is drawn.
+        public string Art;
 
-        public static CardData Magic(string name, MagicEffect effect, int amount, Color tint)
-            => new CardData { Name = name, Type = CardType.Magic, Effect = effect, Amount = amount, Tint = tint };
+        public static CardData Monster(string name, int atk, int hp, Color tint, bool taunt = false, bool charge = false, string art = null)
+            => new CardData { Name = name, Type = CardType.Monster, Attack = atk, Health = hp, Tint = tint, Taunt = taunt, Charge = charge, Art = art };
+
+        public static CardData Magic(string name, MagicEffect effect, int amount, Color tint, string art = null)
+            => new CardData { Name = name, Type = CardType.Magic, Effect = effect, Amount = amount, Tint = tint, Art = art };
 
         public CardData Clone() => (CardData)MemberwiseClone();
     }
@@ -274,12 +278,12 @@ namespace CardBattle
             var hero = new Duelist("You", isPlayer: true)
             { Title = "the Wandering Hero", MaxHP = StartHP, MaxEnergy = StartEnergy, Theme = ColEnergyPlayer };
             hero.AddDeck(new Deck("Adventurer's Kit")
-                .Add(CardData.Monster("Stone Guardian", 2, 6, new Color(0.55f,0.65f,0.8f), taunt: true), 2)
-                .Add(CardData.Monster("Dire Wolf",      3, 3, new Color(0.7f,0.5f,0.35f)), 2)
-                .Add(CardData.Monster("Fire Imp",       4, 2, new Color(0.9f,0.45f,0.25f)), 2)
-                .Add(CardData.Magic ("Strike", MagicEffect.Damage, 5, new Color(0.9f,0.3f,0.3f)), 3)
-                .Add(CardData.Magic ("Bolt",   MagicEffect.Damage, 3, new Color(0.95f,0.8f,0.3f)), 2)
-                .Add(CardData.Magic ("Mend",   MagicEffect.Heal,   5, ColHpFill), 2));
+                .Add(CardData.Monster("Stone Guardian", 2, 6, new Color(0.55f,0.65f,0.8f), taunt: true, art: "Cards/Monster - Stone Guardian"), 2)
+                .Add(CardData.Monster("Dire Wolf",      3, 3, new Color(0.7f,0.5f,0.35f), art: "Cards/Monster - Dire Wolf"), 2)
+                .Add(CardData.Monster("Fire Imp",       4, 2, new Color(0.9f,0.45f,0.25f), art: "Cards/Monster - Fire Imp"), 2)
+                .Add(CardData.Magic ("Strike", MagicEffect.Damage, 5, new Color(0.9f,0.3f,0.3f), art: "Cards/Spell - Strike"), 3)
+                .Add(CardData.Magic ("Bolt",   MagicEffect.Damage, 3, new Color(0.95f,0.8f,0.3f), art: "Cards/Spell - Bolt"), 2)
+                .Add(CardData.Magic ("Mend",   MagicEffect.Heal,   5, ColHpFill, art: "Cards/Spell - Mend"), 2));
             return hero;
         }
 
@@ -288,8 +292,8 @@ namespace CardBattle
             var boss = new Duelist("Malvyn", isPlayer: false)
             { Title = "the Cursed Scholar", MaxHP = StartHP, MaxEnergy = StartEnergy, Theme = ColAccent };
             boss.AddDeck(new Deck("Cursed Grimoire")
-                .Add(CardData.Monster("Cursed Wretch", 2, 4, ColAccent, taunt: true), 2)
-                .Add(CardData.Monster("Shade",         3, 2, new Color(0.35f,0.3f,0.45f)), 2)
+                .Add(CardData.Monster("Cursed Wretch", 2, 4, ColAccent, taunt: true, art: "Cards/Enemy Card - Cursed Wretch"), 2)
+                .Add(CardData.Monster("Shade",         3, 2, new Color(0.35f,0.3f,0.45f), art: "Cards/Enemy Card - Shade"), 2)
                 .Add(CardData.Magic ("Soul Rip",  MagicEffect.Damage, 4, ColAccent), 3)
                 .Add(CardData.Magic ("Dark Bolt", MagicEffect.Damage, 3, new Color(0.5f,0.3f,0.7f)), 2)
                 .Add(CardData.Magic ("Drain",     MagicEffect.Heal,   4, new Color(0.4f,0.7f,0.5f)), 1));
@@ -1237,8 +1241,11 @@ namespace CardBattle
         {
             bool interactive = onClick != null;
             bool isMonster = ci.Data.Type == CardType.Monster;
-            var card = NewImage("Card_" + ci.Data.Name, parent, isMonster ? ColCardMonster : ColCardMagic);
+            var fullArt = FullArtFor(ci.Data);
+            var card = NewImage("Card_" + ci.Data.Name, parent,
+                fullArt != null ? Color.white : (isMonster ? ColCardMonster : ColCardMagic));
             card.raycastTarget = interactive;
+            if (fullArt != null) { card.sprite = fullArt; card.preserveAspect = false; }
 
             if (fill)
             {
@@ -1258,6 +1265,8 @@ namespace CardBattle
             else                  { outlineW = 1.2f; outlineCol = ColGold; }
             AddGoldOutline(card, outlineW, outlineCol);
 
+            if (fullArt == null)
+            {
             var inner = NewImage("Inner", card.rectTransform, new Color(1f,1f,1f,0.025f));
             Stretch(inner.rectTransform);
             inner.rectTransform.offsetMin = new Vector2(5,5);
@@ -1335,6 +1344,16 @@ namespace CardBattle
                 Place(amount.gameObject, new Vector2(1,0), new Vector2(1,0), new Vector2(1,0), new Vector2(-8,5), new Vector2(38,24));
                 amount.fontStyle = FontStyle.Bold;
             }
+            }
+            else if (isMonster && showCurrentHp)
+            {
+                // Pre-rendered face on the board: overlay live combat stats over the
+                // baked-in numbers so damage is readable as the minion trades blows.
+                int hp = ci.CurrentHealth;
+                BuildStatChip(card.rectTransform, ci.Data.Attack.ToString(), left: true,  new Color(1f,0.45f,0.35f));
+                BuildStatChip(card.rectTransform, hp.ToString(), left: false,
+                    hp < ci.Data.Health ? new Color(1f,0.72f,0.25f) : new Color(0.48f,0.92f,0.58f));
+            }
 
             if (interactive)
             {
@@ -1344,6 +1363,18 @@ namespace CardBattle
                 var cb = onClick;
                 btn.onClick.AddListener(() => cb());
             }
+        }
+
+        // A small stat badge pinned to a bottom corner of a card, used to show live
+        // ATK / current HP over a pre-rendered card face.
+        void BuildStatChip(Transform card, string value, bool left, Color textColor)
+        {
+            var chip = NewImage("StatChip", card, new Color(0.02f,0.015f,0.02f,0.9f));
+            Vector2 corner = left ? new Vector2(0,0) : new Vector2(1,0);
+            Place(chip.gameObject, corner, corner, corner, new Vector2(left ? 4 : -4, 4), new Vector2(24,20));
+            AddGoldOutline(chip, 0.6f, ColGold);
+            var t = NewText("V", chip.rectTransform, value, 13, TextAnchor.MiddleCenter, textColor);
+            Stretch(t.rectTransform); t.fontStyle = FontStyle.Bold;
         }
 
         Sprite CardArtFor(CardInstance ci)
@@ -1387,13 +1418,25 @@ namespace CardBattle
             return img;
         }
 
-        Sprite LoadSprite(string resourceName)
+        Sprite LoadSprite(string resourceName) => LoadSpriteAt("CardQuest/" + resourceName);
+
+        Sprite LoadSpriteAt(string resourcePath)
         {
-            var tex = Resources.Load<Texture2D>("CardQuest/" + resourceName);
+            var tex = Resources.Load<Texture2D>(resourcePath);
             if (tex == null) return null;
             tex.wrapMode = TextureWrapMode.Clamp;
             tex.filterMode = FilterMode.Bilinear;
             return Sprite.Create(tex, new Rect(0, 0, tex.width, tex.height), new Vector2(0.5f, 0.5f), 100f);
+        }
+
+        // Lazily load and cache a card's full pre-rendered face, if it declares one.
+        readonly Dictionary<string, Sprite> fullArtCache = new Dictionary<string, Sprite>();
+        Sprite FullArtFor(CardData d)
+        {
+            if (string.IsNullOrEmpty(d.Art)) return null;
+            if (!fullArtCache.TryGetValue(d.Art, out var sprite))
+                fullArtCache[d.Art] = sprite = LoadSpriteAt(d.Art);
+            return sprite;
         }
 
         void AddGoldOutline(Image img)
