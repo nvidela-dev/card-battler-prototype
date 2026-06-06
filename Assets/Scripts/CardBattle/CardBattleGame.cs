@@ -192,7 +192,7 @@ namespace CardBattle
         readonly List<string> log = new List<string>();
 
         // ----- ui refs -----
-        Font font, displayFont;
+        Font font;
         Sprite backgroundSprite, playerPortraitSprite, strikeArtSprite, guardArtSprite, curseArtSprite;
         RectTransform handPanel;
         RectTransform[] playerSlots = new RectTransform[5];
@@ -219,8 +219,6 @@ namespace CardBattle
         {
             font = Resources.GetBuiltinResource<Font>("LegacyRuntime.ttf");
             if (font == null) font = Resources.GetBuiltinResource<Font>("Arial.ttf");
-            displayFont = Font.CreateDynamicFontFromOSFont(new[] { "Georgia", "Times New Roman", "Times" }, 48);
-            if (displayFont == null) displayFont = font;
 
             EnsureEventSystem();
             LoadArt();
@@ -732,38 +730,37 @@ namespace CardBattle
             var lowerShade = NewImage("TableReadabilityShade", root, new Color(0f, 0f, 0f, 0.14f));
             Place(lowerShade.gameObject, new Vector2(0,0), new Vector2(1,0.45f), new Vector2(.5f,0), Vector2.zero, Vector2.zero);
 
-            var boardFrame = NewImage("BoardFrame", root, new Color(0.02f, 0.015f, 0.013f, 0.10f));
-            Place(boardFrame.gameObject, new Vector2(.5f,.5f), new Vector2(.5f,.5f), new Vector2(.5f,.5f), new Vector2(74,-20), new Vector2(760,296));
-            AddGoldOutline(boardFrame, 0.8f, new Color(0.45f,0.30f,0.14f,0.36f));
-
-            BuildLogo(root);
-
-            enemyBox = BuildBossPanel(root, out enemyHpFill, out enemyHpText, out enemyEnText, enemyPips);
-            playerBox = BuildPlayerStatus(root, out playerHpFill, out playerHpText);
-            BuildEnergyDial(root, out playerEnText, playerPips);
+            // Matching duelist frames in the top corners: enemy on the left, player on the right.
+            enemyBox = BuildDuelistFrame(root, "MALVYN", "THE CURSED SCHOLAR", curseArtSprite, ColPurpleText,
+                new Vector2(0,1), new Vector2(28,-24), ColEnergyOn, enemyPips, mirror: true,
+                () => OnPortraitClicked(true), out enemyHpFill, out enemyHpText, out enemyEnText);
+            playerBox = BuildDuelistFrame(root, "YOU", "THE WANDERING HERO", playerPortraitSprite, ColTextWarm,
+                new Vector2(1,1), new Vector2(-28,-24), ColEnergyPlayer, playerPips, mirror: false,
+                () => OnPortraitClicked(false), out playerHpFill, out playerHpText, out playerEnText);
             BuildDeckStack(root);
-            BuildPhaseList(root);
 
-            turnText = NewText("TurnPlaque", root, "", 18, TextAnchor.MiddleCenter, ColTextWarm);
-            Place(turnText.gameObject, new Vector2(.5f,1), new Vector2(.5f,1), new Vector2(.5f,1), new Vector2(0,-21), new Vector2(210,38));
+            // Turn indicator sits stacked directly above the deck/discard panel on the right.
+            // (Deck panel: anchored (1,.5), right edge -42, width 132 → column centre is -108 from the right.)
+            var plaque = NewImage("TurnPlaqueFrame", root, new Color(0.02f,0.016f,0.014f,0.52f));
+            Place(plaque.gameObject, new Vector2(1,.5f), new Vector2(1,.5f), new Vector2(.5f,.5f), new Vector2(-108,116), new Vector2(140,56));
+            AddGoldOutline(plaque, 1f);
+
+            turnText = NewText("TurnPlaque", root, "", 14, TextAnchor.MiddleCenter, ColTextWarm);
+            Place(turnText.gameObject, new Vector2(1,.5f), new Vector2(1,.5f), new Vector2(.5f,.5f), new Vector2(-108,116), new Vector2(132,50));
             turnText.fontStyle = FontStyle.Bold;
-            turnText.lineSpacing = 0.86f;
+            turnText.lineSpacing = 0.92f;
+            AddLetterSpacing(turnText, 3f);
             var turnOutline = turnText.gameObject.AddComponent<Outline>();
             turnOutline.effectColor = Color.black;
             turnOutline.effectDistance = new Vector2(2, -2);
 
-            var plaque = NewImage("TurnPlaqueFrame", root, new Color(0.02f,0.016f,0.014f,0.52f));
-            Place(plaque.gameObject, new Vector2(.5f,1), new Vector2(.5f,1), new Vector2(.5f,1), new Vector2(0,-23), new Vector2(224,42));
-            plaque.transform.SetSiblingIndex(turnText.transform.GetSiblingIndex());
-            AddGoldOutline(plaque, 1f);
-
             logText = NewText("Log", root, "", 12, TextAnchor.UpperCenter, new Color(0.86f,0.78f,0.92f));
-            Place(logText.gameObject, new Vector2(.5f,1), new Vector2(.5f,1), new Vector2(.5f,1), new Vector2(0,-72), new Vector2(540,52));
+            Place(logText.gameObject, new Vector2(.5f,1), new Vector2(.5f,1), new Vector2(.5f,1), new Vector2(0,-30), new Vector2(540,52));
 
-            var enemyRow = NewRow("EnemyBoard", root, new Vector2(74, 82));
+            var enemyRow = NewRow("EnemyBoard", root, new Vector2(0, 82));
             for (int i = 0; i < 5; i++) enemySlots[i] = BuildSlot(enemyRow, true);
 
-            var playerRow = NewRow("PlayerBoard", root, new Vector2(74, -72));
+            var playerRow = NewRow("PlayerBoard", root, new Vector2(0, -72));
             for (int i = 0; i < 5; i++) playerSlots[i] = BuildSlot(playerRow, false);
 
             var handGO = new GameObject("Hand", typeof(RectTransform), typeof(HorizontalLayoutGroup));
@@ -785,101 +782,71 @@ namespace CardBattle
             BuildCollectionViewer(root);
         }
 
-        void BuildLogo(Transform root)
+        // A compact duelist HUD frame: portrait in the outer corner, name + subtitle,
+        // an HP bar, and an energy readout (pips + count) right below it. The same builder
+        // drives both duelists; `mirror` flips the layout so the enemy (left) and player
+        // (right) read symmetrically toward their screen corners.
+        Image BuildDuelistFrame(Transform root, string title, string subtitle, Sprite portrait, Color titleColor,
+            Vector2 anchor, Vector2 pos, Color energyColor, List<Image> pips, bool mirror,
+            UnityEngine.Events.UnityAction onPortraitClick,
+            out RectTransform hpFill, out Text hpText, out Text enText)
         {
-            var group = NewRect("Brand", root);
-            Place(group.gameObject, new Vector2(0,1), new Vector2(0,1), new Vector2(0,1), new Vector2(28,-24), new Vector2(318,90));
-
-            var mark = NewImage("EyeMark", group, Color.white);
-            Place(mark.gameObject, new Vector2(0,1), new Vector2(0,1), new Vector2(0,1), new Vector2(0,0), new Vector2(58,58));
-            mark.sprite = curseArtSprite;
-            mark.preserveAspect = true;
-
-            var word = NewText("Wordmark", group, "CARD QUEST", 36, TextAnchor.UpperLeft, ColTextWarm);
-            word.font = displayFont;
-            Place(word.gameObject, new Vector2(0,1), new Vector2(0,1), new Vector2(0,1), new Vector2(66,-2), new Vector2(240,46));
-            word.fontStyle = FontStyle.Bold;
-            var wordOutline = word.gameObject.AddComponent<Outline>();
-            wordOutline.effectColor = Color.black;
-            wordOutline.effectDistance = new Vector2(3, -3);
-
-            var tag = NewText("Tagline", group, "DUEL - EXPLORE - COLLECT", 12, TextAnchor.UpperLeft, new Color(0.86f,0.70f,0.45f));
-            tag.font = displayFont;
-            Place(tag.gameObject, new Vector2(0,1), new Vector2(0,1), new Vector2(0,1), new Vector2(74,-48), new Vector2(216,20));
-        }
-
-        Image BuildBossPanel(Transform root, out RectTransform hpFill, out Text hpText, out Text enText, List<Image> pips)
-        {
-            var box = NewImage("BossDossier", root, ColPanel);
-            var rt = Place(box.gameObject, new Vector2(0,1), new Vector2(0,1), new Vector2(0,1), new Vector2(28,-138), new Vector2(342,214));
+            var box = NewImage("DuelistFrame", root, ColPanel);
+            var rt = Place(box.gameObject, anchor, anchor, anchor, pos, new Vector2(312, 124));
             AddGoldOutline(box);
 
             var btn = box.gameObject.AddComponent<Button>();
-            btn.onClick.AddListener(() => OnPortraitClicked(true));
+            btn.onClick.AddListener(onPortraitClick);
 
-            var sigil = NewImage("BossSigil", rt, Color.white);
-            Place(sigil.gameObject, new Vector2(0,1), new Vector2(0,1), new Vector2(0,1), new Vector2(16,-16), new Vector2(78,78));
-            sigil.sprite = curseArtSprite;
-            sigil.preserveAspect = true;
+            // portrait hugs the outer screen corner; the text column fills the inner side
+            Vector2 portAnchor = mirror ? new Vector2(0,1) : new Vector2(1,1);
+            Vector2 portPos    = mirror ? new Vector2(12,-12) : new Vector2(-12,-12);
+            var portraitFrame = NewImage("PortraitFrame", rt, new Color(0.02f,0.018f,0.024f,0.95f));
+            Place(portraitFrame.gameObject, portAnchor, portAnchor, portAnchor, portPos, new Vector2(84,84));
+            AddGoldOutline(portraitFrame);
+            var pimg = NewImage("Portrait", portraitFrame.rectTransform, portrait != null ? Color.white : new Color(0.1f,0.09f,0.12f));
+            Stretch(pimg.rectTransform);
+            pimg.rectTransform.offsetMin = new Vector2(4,4);
+            pimg.rectTransform.offsetMax = new Vector2(-4,-4);
+            if (portrait != null) pimg.sprite = portrait;
+            pimg.preserveAspect = false;
 
-            var eyebrow = NewText("BossEyebrow", rt, "BOSS DUELIST", 14, TextAnchor.UpperLeft, ColTextWarm);
-            Place(eyebrow.gameObject, new Vector2(0,1), new Vector2(0,1), new Vector2(0,1), new Vector2(112,-18), new Vector2(174,22));
-            var name = NewText("BossName", rt, "MALVYN", 28, TextAnchor.UpperLeft, ColPurpleText);
-            Place(name.gameObject, new Vector2(0,1), new Vector2(0,1), new Vector2(0,1), new Vector2(112,-40), new Vector2(184,36));
+            Vector2 txtAnchor = mirror ? new Vector2(1,1) : new Vector2(0,1);
+            float dir = mirror ? -1f : 1f;   // x grows away from the outer corner
+            TextAnchor align = mirror ? TextAnchor.UpperRight : TextAnchor.UpperLeft;
+            const float edge = 16f;
+
+            var name = NewText("Name", rt, title, 24, align, titleColor);
+            Place(name.gameObject, txtAnchor, txtAnchor, txtAnchor, new Vector2(dir*edge, -12), new Vector2(196,30));
             name.fontStyle = FontStyle.Bold;
-            var sub = NewText("BossSub", rt, "THE CURSED SCHOLAR", 13, TextAnchor.UpperLeft, new Color(0.82f,0.66f,0.95f));
-            Place(sub.gameObject, new Vector2(0,1), new Vector2(0,1), new Vector2(0,1), new Vector2(112,-76), new Vector2(198,20));
 
-            BuildHpBar(rt, new Vector2(16,-108), new Vector2(310,18), out hpFill, out hpText);
+            if (!string.IsNullOrEmpty(subtitle))
+            {
+                var sub = NewText("Sub", rt, subtitle, 12, align, new Color(0.82f,0.74f,0.62f));
+                Place(sub.gameObject, txtAnchor, txtAnchor, txtAnchor, new Vector2(dir*edge, -44), new Vector2(210,18));
+            }
 
-            var quote = NewText("BossQuote", rt, "\"Heh heh heh...\nThe weak don't deserve\nthe right to draw.\"", 14, TextAnchor.UpperLeft, new Color(0.84f,0.67f,1f));
-            Place(quote.gameObject, new Vector2(0,1), new Vector2(0,1), new Vector2(0,1), new Vector2(26,-154), new Vector2(200,58));
+            BuildHpBar(rt, new Vector2(dir*edge, -66), new Vector2(196,20), out hpFill, out hpText, rightAnchor: mirror);
 
-            var pipRow = new GameObject("BossEnergy", typeof(RectTransform), typeof(HorizontalLayoutGroup));
+            // energy pips sit directly under the HP bar, on the same inner edge
+            var pipRow = new GameObject("EnergyPips", typeof(RectTransform), typeof(HorizontalLayoutGroup));
             pipRow.transform.SetParent(rt, false);
-            Place(pipRow, new Vector2(1,1), new Vector2(1,1), new Vector2(1,1), new Vector2(-128,-132), new Vector2(92,16));
+            Place(pipRow, txtAnchor, txtAnchor, txtAnchor, new Vector2(dir*edge, -92), new Vector2(120,18));
             var prl = pipRow.GetComponent<HorizontalLayoutGroup>();
-            prl.spacing = 4; prl.childAlignment = TextAnchor.MiddleLeft;
+            prl.spacing = 5; prl.childAlignment = mirror ? TextAnchor.MiddleRight : TextAnchor.MiddleLeft;
             prl.childControlWidth = true; prl.childControlHeight = true;
             prl.childForceExpandWidth = false; prl.childForceExpandHeight = false;
             for (int i = 0; i < StartEnergy; i++)
             {
-                var pip = NewImage("Pip", pipRow.transform, ColEnergyOn);
+                var pip = NewImage("Pip", pipRow.transform, energyColor);
                 var le = pip.gameObject.AddComponent<LayoutElement>();
-                le.preferredWidth = 15; le.preferredHeight = 15;
-                AddGoldOutline(pip, 0.5f, new Color(0.85f,0.62f,0.25f,0.7f));
+                le.preferredWidth = 16; le.preferredHeight = 16;
+                AddGoldOutline(pip, 0.5f, new Color(0.85f,0.62f,0.25f,0.72f));
                 pips.Add(pip);
             }
-            enText = NewText("BossEnergyText", rt, "", 13, TextAnchor.UpperRight, ColTextWarm);
-            Place(enText.gameObject, new Vector2(1,1), new Vector2(1,1), new Vector2(1,1), new Vector2(-18,-130), new Vector2(92,18));
+            enText = NewText("EnergyText", rt, "", 14, align, ColTextWarm);
+            Place(enText.gameObject, txtAnchor, txtAnchor, txtAnchor, new Vector2(dir*(edge+72), -91), new Vector2(60,18));
             enText.fontStyle = FontStyle.Bold;
-
-            return box;
-        }
-
-        Image BuildPlayerStatus(Transform root, out RectTransform hpFill, out Text hpText)
-        {
-            var box = NewImage("PlayerStatus", root, ColPanel);
-            var rt = Place(box.gameObject, new Vector2(1,1), new Vector2(1,1), new Vector2(1,1), new Vector2(-28,-24), new Vector2(264,96));
-            AddGoldOutline(box);
-
-            var btn = box.gameObject.AddComponent<Button>();
-            btn.onClick.AddListener(() => OnPortraitClicked(false));
-
-            var portraitFrame = NewImage("PortraitFrame", rt, new Color(0.02f,0.018f,0.024f,0.95f));
-            Place(portraitFrame.gameObject, new Vector2(1,1), new Vector2(1,1), new Vector2(1,1), new Vector2(-12,-12), new Vector2(72,72));
-            AddGoldOutline(portraitFrame);
-            var portrait = NewImage("Portrait", portraitFrame.rectTransform, Color.white);
-            Stretch(portrait.rectTransform);
-            portrait.rectTransform.offsetMin = new Vector2(4,4);
-            portrait.rectTransform.offsetMax = new Vector2(-4,-4);
-            portrait.sprite = playerPortraitSprite;
-            portrait.preserveAspect = false;
-
-            var name = NewText("PlayerName", rt, "YOU", 20, TextAnchor.UpperRight, ColTextWarm);
-            Place(name.gameObject, new Vector2(1,1), new Vector2(1,1), new Vector2(1,1), new Vector2(-96,-16), new Vector2(150,28));
-            name.fontStyle = FontStyle.Bold;
-            BuildHpBar(rt, new Vector2(16,-54), new Vector2(154,18), out hpFill, out hpText);
 
             return box;
         }
@@ -901,36 +868,6 @@ namespace CardBattle
             Stretch(hpText.rectTransform); hpText.fontStyle = FontStyle.Bold;
         }
 
-        void BuildEnergyDial(Transform root, out Text enText, List<Image> pips)
-        {
-            var dial = NewImage("EnergyDial", root, new Color(0.02f,0.018f,0.024f,0.88f));
-            var rt = Place(dial.gameObject, new Vector2(0,0), new Vector2(0,0), new Vector2(0,0), new Vector2(28,24), new Vector2(156,112));
-            AddGoldOutline(dial);
-
-            enText = NewText("EnergyText", rt, "", 30, TextAnchor.MiddleCenter, ColTextWarm);
-            Place(enText.gameObject, new Vector2(.5f,1), new Vector2(.5f,1), new Vector2(.5f,1), new Vector2(0,-18), new Vector2(112,34));
-            enText.fontStyle = FontStyle.Bold;
-
-            var label = NewText("EnergyLabel", rt, "ENERGY", 14, TextAnchor.MiddleCenter, new Color(0.78f,0.68f,0.52f));
-            Place(label.gameObject, new Vector2(.5f,1), new Vector2(.5f,1), new Vector2(.5f,1), new Vector2(0,-50), new Vector2(110,20));
-
-            var pipRow = new GameObject("PlayerEnergyPips", typeof(RectTransform), typeof(HorizontalLayoutGroup));
-            pipRow.transform.SetParent(rt, false);
-            Place(pipRow, new Vector2(.5f,0), new Vector2(.5f,0), new Vector2(.5f,0), new Vector2(0,14), new Vector2(104,18));
-            var prl = pipRow.GetComponent<HorizontalLayoutGroup>();
-            prl.spacing = 6; prl.childAlignment = TextAnchor.MiddleCenter;
-            prl.childControlWidth = true; prl.childControlHeight = true;
-            prl.childForceExpandWidth = false; prl.childForceExpandHeight = false;
-            for (int i = 0; i < StartEnergy; i++)
-            {
-                var pip = NewImage("Pip", pipRow.transform, ColEnergyPlayer);
-                var le = pip.gameObject.AddComponent<LayoutElement>();
-                le.preferredWidth = 18; le.preferredHeight = 18;
-                AddGoldOutline(pip, 0.5f, new Color(0.85f,0.62f,0.25f,0.72f));
-                pips.Add(pip);
-            }
-        }
-
         void BuildDeckStack(Transform root)
         {
             var panel = NewImage("DeckStack", root, new Color(0.018f,0.015f,0.018f,0.78f));
@@ -941,18 +878,20 @@ namespace CardBattle
             Place(icon.gameObject, new Vector2(0,1), new Vector2(0,1), new Vector2(0,1), new Vector2(14,-14), new Vector2(36,36));
             icon.sprite = curseArtSprite;
             icon.preserveAspect = true;
-            var deckLabel = NewText("DeckLabel", rt, "DECK", 12, TextAnchor.UpperLeft, new Color(0.78f,0.70f,0.58f));
+            var deckLabel = NewText("DeckLabel", rt, "DECK", 10, TextAnchor.UpperLeft, new Color(0.78f,0.70f,0.58f));
             Place(deckLabel.gameObject, new Vector2(0,1), new Vector2(0,1), new Vector2(0,1), new Vector2(58,-16), new Vector2(60,18));
-            deckText = NewText("DeckCount", rt, "", 24, TextAnchor.UpperLeft, ColTextWarm);
+            AddLetterSpacing(deckLabel, 2.5f);
+            deckText = NewText("DeckCount", rt, "", 20, TextAnchor.UpperLeft, ColTextWarm);
             Place(deckText.gameObject, new Vector2(0,1), new Vector2(0,1), new Vector2(0,1), new Vector2(58,-36), new Vector2(54,30));
             deckText.fontStyle = FontStyle.Bold;
 
             var line = NewImage("Divider", rt, new Color(0.67f,0.49f,0.25f,0.45f));
             Place(line.gameObject, new Vector2(0,1), new Vector2(0,1), new Vector2(0,1), new Vector2(14,-70), new Vector2(104,1));
 
-            var discardLabel = NewText("DiscardLabel", rt, "DISCARD", 12, TextAnchor.UpperCenter, new Color(0.78f,0.70f,0.58f));
+            var discardLabel = NewText("DiscardLabel", rt, "DISCARD", 10, TextAnchor.UpperCenter, new Color(0.78f,0.70f,0.58f));
             Place(discardLabel.gameObject, new Vector2(.5f,1), new Vector2(.5f,1), new Vector2(.5f,1), new Vector2(0,-80), new Vector2(104,18));
-            discardText = NewText("DiscardCount", rt, "", 24, TextAnchor.UpperCenter, ColTextWarm);
+            AddLetterSpacing(discardLabel, 2.5f);
+            discardText = NewText("DiscardCount", rt, "", 20, TextAnchor.UpperCenter, ColTextWarm);
             Place(discardText.gameObject, new Vector2(.5f,1), new Vector2(.5f,1), new Vector2(.5f,1), new Vector2(0,-100), new Vector2(54,30));
             discardText.fontStyle = FontStyle.Bold;
 
@@ -974,27 +913,6 @@ namespace CardBattle
             colors.pressedColor = new Color(0.85f,0.7f,0.35f,0.28f);
             btn.colors = colors;
             btn.onClick.AddListener(onClick);
-        }
-
-        void BuildPhaseList(Transform root)
-        {
-            var panel = NewImage("PhaseList", root, new Color(0.018f,0.016f,0.018f,0.78f));
-            var rt = Place(panel.gameObject, new Vector2(0,.5f), new Vector2(0,.5f), new Vector2(0,.5f), new Vector2(28,-112), new Vector2(156,170));
-            AddGoldOutline(panel, 0.8f, new Color(0.55f,0.38f,0.18f,0.68f));
-
-            var title = NewText("PhaseTitle", rt, "TURN PHASE", 13, TextAnchor.MiddleCenter, ColTextWarm);
-            Place(title.gameObject, new Vector2(.5f,1), new Vector2(.5f,1), new Vector2(.5f,1), new Vector2(0,-19), new Vector2(130,24));
-
-            string[] rows = { "1  DRAW CARD", "2  GAIN ENERGY", "3  PLAY CARDS", "4  ATTACK", "5  END TURN" };
-            for (int i = 0; i < rows.Length; i++)
-            {
-                var row = NewImage("PhaseRow", rt, i == 2 ? new Color(0.32f,0.12f,0.68f,0.72f) : new Color(1f,1f,1f,0.035f));
-                Place(row.gameObject, new Vector2(.5f,1), new Vector2(.5f,1), new Vector2(.5f,1), new Vector2(0,-48 - i * 24), new Vector2(132,22));
-                if (i == 2) AddGoldOutline(row, 0.6f, new Color(0.75f,0.42f,1f,0.74f));
-                var txt = NewText("PhaseText", row.rectTransform, rows[i], 12, TextAnchor.MiddleLeft, i == 2 ? Color.white : new Color(0.70f,0.66f,0.60f));
-                Place(txt.gameObject, new Vector2(0,0), new Vector2(1,1), new Vector2(.5f,.5f), new Vector2(10,0), new Vector2(-18,0));
-                txt.fontStyle = i == 2 ? FontStyle.Bold : FontStyle.Normal;
-            }
         }
 
         RectTransform NewRow(string name, Transform root, Vector2 pos)
@@ -1480,6 +1398,69 @@ namespace CardBattle
         {
             rt.anchorMin = Vector2.zero; rt.anchorMax = Vector2.one;
             rt.offsetMin = Vector2.zero; rt.offsetMax = Vector2.zero;
+        }
+
+        // Legacy uGUI Text has no tracking property; attach a mesh effect to add per-letter spacing (in pixels).
+        static void AddLetterSpacing(Text t, float pixels)
+        {
+            t.gameObject.AddComponent<LetterSpacing>().Spacing = pixels;
+        }
+    }
+
+    /// <summary>Adds uniform per-character spacing (tracking, in pixels) to a legacy uGUI Text.</summary>
+    [DisallowMultipleComponent]
+    public class LetterSpacing : BaseMeshEffect
+    {
+        public float Spacing;
+
+        protected LetterSpacing() { }
+
+        public override void ModifyMesh(VertexHelper vh)
+        {
+            if (!IsActive() || Spacing == 0f || vh.currentVertCount == 0) return;
+            var text = GetComponent<Text>();
+            if (text == null) return;
+
+            var verts = new List<UIVertex>();
+            vh.GetUIVertexStream(verts);
+
+            string[] lines = text.text.Split('\n');
+            float align;
+            switch (text.alignment)
+            {
+                case TextAnchor.UpperCenter:
+                case TextAnchor.MiddleCenter:
+                case TextAnchor.LowerCenter: align = 0.5f; break;
+                case TextAnchor.UpperRight:
+                case TextAnchor.MiddleRight:
+                case TextAnchor.LowerRight:  align = 1f;   break;
+                default:                     align = 0f;   break;
+            }
+
+            // Some Unity versions emit quads for whitespace, some don't — detect which.
+            int visibleChars = 0;
+            foreach (var ln in lines)
+                foreach (char c in ln) if (!char.IsWhiteSpace(c)) visibleChars++;
+            bool whitespaceHasVerts = verts.Count / 6 > visibleChars;
+
+            int glyph = 0;
+            foreach (var line in lines)
+            {
+                int len = line.Length;
+                float lineShift = (len - 1) * Spacing * align;
+                for (int ci = 0; ci < len; ci++)
+                {
+                    if (char.IsWhiteSpace(line[ci]) && !whitespaceHasVerts) continue;
+                    int b = glyph * 6;
+                    if (b + 5 >= verts.Count) { vh.Clear(); vh.AddUIVertexTriangleStream(verts); return; }
+                    Vector3 shift = Vector3.right * (Spacing * ci - lineShift);
+                    for (int k = 0; k < 6; k++) { var v = verts[b + k]; v.position += shift; verts[b + k] = v; }
+                    glyph++;
+                }
+            }
+
+            vh.Clear();
+            vh.AddUIVertexTriangleStream(verts);
         }
     }
 }
