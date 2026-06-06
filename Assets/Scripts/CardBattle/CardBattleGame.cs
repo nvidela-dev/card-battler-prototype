@@ -103,8 +103,8 @@ namespace CardBattle
         // ----- palette -----
         static readonly Color ColBG          = new Color(0.03f, 0.02f, 0.03f);
         static readonly Color ColPanel       = new Color(0.025f, 0.022f, 0.026f, 0.84f);
-        static readonly Color ColSlot        = new Color(0.025f, 0.018f, 0.016f, 0.48f);
-        static readonly Color ColSlotEnemy   = new Color(0.18f, 0.05f, 0.17f, 0.46f);
+        static readonly Color ColSlot        = new Color(0.025f, 0.018f, 0.016f, 0.16f);
+        static readonly Color ColSlotEnemy   = new Color(0.18f, 0.05f, 0.17f, 0.18f);
         static readonly Color ColCardMonster = new Color(0.045f, 0.055f, 0.072f, 0.98f);
         static readonly Color ColCardMagic   = new Color(0.07f, 0.045f, 0.09f, 0.98f);
         static readonly Color ColHpFill      = new Color(0.08f, 0.48f, 0.95f);
@@ -135,7 +135,7 @@ namespace CardBattle
         RectTransform[] enemySlots  = new RectTransform[5];
         RectTransform playerHpFill, enemyHpFill;
         Text playerHpText, enemyHpText, playerEnText, enemyEnText, turnText, logText, hintText;
-        Text deckText, discardText, enemyDeckText, enemyDiscardText;
+        Text deckText, discardText;
         Image playerBox, enemyBox;     // info boxes (highlighted while targeting)
         readonly List<Image> playerPips = new List<Image>();
         readonly List<Image> enemyPips  = new List<Image>();
@@ -482,14 +482,14 @@ namespace CardBattle
             Stretch(bg.rectTransform);
             if (backgroundSprite != null) bg.sprite = backgroundSprite;
 
-            var shade = NewImage("ReadableShade", root, new Color(0f, 0f, 0f, 0.24f));
+            var shade = NewImage("ReadableShade", root, new Color(0f, 0f, 0f, 0.16f));
             Stretch(shade.rectTransform);
-            var lowerShade = NewImage("TableReadabilityShade", root, new Color(0f, 0f, 0f, 0.28f));
+            var lowerShade = NewImage("TableReadabilityShade", root, new Color(0f, 0f, 0f, 0.14f));
             Place(lowerShade.gameObject, new Vector2(0,0), new Vector2(1,0.45f), new Vector2(.5f,0), Vector2.zero, Vector2.zero);
 
-            var boardFrame = NewImage("BoardFrame", root, new Color(0.02f, 0.015f, 0.013f, 0.28f));
-            Place(boardFrame.gameObject, new Vector2(.5f,.5f), new Vector2(.5f,.5f), new Vector2(.5f,.5f), new Vector2(78,-10), new Vector2(820,352));
-            AddGoldOutline(boardFrame, 1f, new Color(0.45f,0.30f,0.14f,0.55f));
+            var boardFrame = NewImage("BoardFrame", root, new Color(0.02f, 0.015f, 0.013f, 0.10f));
+            Place(boardFrame.gameObject, new Vector2(.5f,.5f), new Vector2(.5f,.5f), new Vector2(.5f,.5f), new Vector2(74,-20), new Vector2(760,296));
+            AddGoldOutline(boardFrame, 0.8f, new Color(0.45f,0.30f,0.14f,0.36f));
 
             BuildLogo(root);
 
@@ -499,41 +499,42 @@ namespace CardBattle
             BuildDeckStack(root);
             BuildPhaseList(root);
 
-            turnText = NewText("TurnPlaque", root, "", 25, TextAnchor.MiddleCenter, ColTextWarm);
-            Place(turnText.gameObject, new Vector2(.5f,1), new Vector2(.5f,1), new Vector2(.5f,1), new Vector2(0,-24), new Vector2(260,48));
+            turnText = NewText("TurnPlaque", root, "", 18, TextAnchor.MiddleCenter, ColTextWarm);
+            Place(turnText.gameObject, new Vector2(.5f,1), new Vector2(.5f,1), new Vector2(.5f,1), new Vector2(0,-21), new Vector2(210,38));
             turnText.fontStyle = FontStyle.Bold;
+            turnText.lineSpacing = 0.86f;
             var turnOutline = turnText.gameObject.AddComponent<Outline>();
             turnOutline.effectColor = Color.black;
             turnOutline.effectDistance = new Vector2(2, -2);
 
-            var plaque = NewImage("TurnPlaqueFrame", root, new Color(0.02f,0.016f,0.014f,0.72f));
-            Place(plaque.gameObject, new Vector2(.5f,1), new Vector2(.5f,1), new Vector2(.5f,1), new Vector2(0,-26), new Vector2(300,58));
+            var plaque = NewImage("TurnPlaqueFrame", root, new Color(0.02f,0.016f,0.014f,0.52f));
+            Place(plaque.gameObject, new Vector2(.5f,1), new Vector2(.5f,1), new Vector2(.5f,1), new Vector2(0,-23), new Vector2(224,42));
             plaque.transform.SetSiblingIndex(turnText.transform.GetSiblingIndex());
-            AddGoldOutline(plaque, 1.5f);
+            AddGoldOutline(plaque, 1f);
 
-            logText = NewText("Log", root, "", 16, TextAnchor.UpperCenter, new Color(0.86f,0.78f,0.92f));
-            Place(logText.gameObject, new Vector2(.5f,1), new Vector2(.5f,1), new Vector2(.5f,1), new Vector2(0,-76), new Vector2(600,76));
+            logText = NewText("Log", root, "", 12, TextAnchor.UpperCenter, new Color(0.86f,0.78f,0.92f));
+            Place(logText.gameObject, new Vector2(.5f,1), new Vector2(.5f,1), new Vector2(.5f,1), new Vector2(0,-72), new Vector2(540,52));
 
-            var enemyRow = NewRow("EnemyBoard", root, new Vector2(78, 105));
+            var enemyRow = NewRow("EnemyBoard", root, new Vector2(74, 82));
             for (int i = 0; i < 5; i++) enemySlots[i] = BuildSlot(enemyRow, true);
 
-            var playerRow = NewRow("PlayerBoard", root, new Vector2(78, -78));
+            var playerRow = NewRow("PlayerBoard", root, new Vector2(74, -72));
             for (int i = 0; i < 5; i++) playerSlots[i] = BuildSlot(playerRow, false);
 
             var handGO = new GameObject("Hand", typeof(RectTransform), typeof(HorizontalLayoutGroup));
             handGO.transform.SetParent(root, false);
             handPanel = (RectTransform)handGO.transform;
-            Place(handGO, new Vector2(.5f,0), new Vector2(.5f,0), new Vector2(.5f,0), new Vector2(0,14), new Vector2(720,178));
+            Place(handGO, new Vector2(.5f,0), new Vector2(.5f,0), new Vector2(.5f,0), new Vector2(0,14), new Vector2(680,164));
             var hlg = handGO.GetComponent<HorizontalLayoutGroup>();
             hlg.spacing = 10; hlg.childAlignment = TextAnchor.MiddleCenter;
             hlg.childControlWidth = true; hlg.childControlHeight = true;
             hlg.childForceExpandWidth = false; hlg.childForceExpandHeight = false;
 
-            hintText = NewText("Hint", root, "", 17, TextAnchor.MiddleCenter, new Color(1f,0.88f,0.42f));
-            Place(hintText.gameObject, new Vector2(.5f,0), new Vector2(.5f,0), new Vector2(.5f,0), new Vector2(0,195), new Vector2(760,28));
+            hintText = NewText("Hint", root, "", 15, TextAnchor.MiddleCenter, new Color(1f,0.88f,0.42f));
+            Place(hintText.gameObject, new Vector2(.5f,0), new Vector2(.5f,0), new Vector2(.5f,0), new Vector2(0,180), new Vector2(700,24));
             hintText.fontStyle = FontStyle.Bold;
 
-            endTurnButton = BuildButton(root, "END\nTURN", new Vector2(1,0), new Vector2(-36,122), new Vector2(150,104), OnEndTurn);
+            endTurnButton = BuildButton(root, "END\nTURN", new Vector2(1,0), new Vector2(-42,116), new Vector2(124,86), OnEndTurn);
 
             BuildGameOver(root);
         }
@@ -541,61 +542,56 @@ namespace CardBattle
         void BuildLogo(Transform root)
         {
             var group = NewRect("Brand", root);
-            Place(group.gameObject, new Vector2(0,1), new Vector2(0,1), new Vector2(0,1), new Vector2(28,-24), new Vector2(360,112));
+            Place(group.gameObject, new Vector2(0,1), new Vector2(0,1), new Vector2(0,1), new Vector2(28,-24), new Vector2(318,90));
 
             var mark = NewImage("EyeMark", group, Color.white);
-            Place(mark.gameObject, new Vector2(0,1), new Vector2(0,1), new Vector2(0,1), new Vector2(0,0), new Vector2(76,76));
+            Place(mark.gameObject, new Vector2(0,1), new Vector2(0,1), new Vector2(0,1), new Vector2(0,0), new Vector2(58,58));
             mark.sprite = curseArtSprite;
             mark.preserveAspect = true;
 
-            var word = NewText("Wordmark", group, "CARD QUEST", 44, TextAnchor.UpperLeft, ColTextWarm);
+            var word = NewText("Wordmark", group, "CARD QUEST", 36, TextAnchor.UpperLeft, ColTextWarm);
             word.font = displayFont;
-            Place(word.gameObject, new Vector2(0,1), new Vector2(0,1), new Vector2(0,1), new Vector2(80,-4), new Vector2(270,54));
+            Place(word.gameObject, new Vector2(0,1), new Vector2(0,1), new Vector2(0,1), new Vector2(66,-2), new Vector2(240,46));
             word.fontStyle = FontStyle.Bold;
             var wordOutline = word.gameObject.AddComponent<Outline>();
             wordOutline.effectColor = Color.black;
             wordOutline.effectDistance = new Vector2(3, -3);
 
-            var tag = NewText("Tagline", group, "DUEL - EXPLORE - COLLECT", 15, TextAnchor.UpperLeft, new Color(0.86f,0.70f,0.45f));
+            var tag = NewText("Tagline", group, "DUEL - EXPLORE - COLLECT", 12, TextAnchor.UpperLeft, new Color(0.86f,0.70f,0.45f));
             tag.font = displayFont;
-            Place(tag.gameObject, new Vector2(0,1), new Vector2(0,1), new Vector2(0,1), new Vector2(92,-58), new Vector2(250,24));
+            Place(tag.gameObject, new Vector2(0,1), new Vector2(0,1), new Vector2(0,1), new Vector2(74,-48), new Vector2(216,20));
         }
 
         Image BuildBossPanel(Transform root, out RectTransform hpFill, out Text hpText, out Text enText, List<Image> pips)
         {
             var box = NewImage("BossDossier", root, ColPanel);
-            var rt = Place(box.gameObject, new Vector2(0,1), new Vector2(0,1), new Vector2(0,1), new Vector2(28,-150), new Vector2(360,244));
+            var rt = Place(box.gameObject, new Vector2(0,1), new Vector2(0,1), new Vector2(0,1), new Vector2(28,-138), new Vector2(342,214));
             AddGoldOutline(box);
 
             var btn = box.gameObject.AddComponent<Button>();
             btn.onClick.AddListener(() => OnPortraitClicked(true));
 
             var sigil = NewImage("BossSigil", rt, Color.white);
-            Place(sigil.gameObject, new Vector2(0,1), new Vector2(0,1), new Vector2(0,1), new Vector2(18,-18), new Vector2(92,92));
+            Place(sigil.gameObject, new Vector2(0,1), new Vector2(0,1), new Vector2(0,1), new Vector2(16,-16), new Vector2(78,78));
             sigil.sprite = curseArtSprite;
             sigil.preserveAspect = true;
 
             var eyebrow = NewText("BossEyebrow", rt, "BOSS DUELIST", 14, TextAnchor.UpperLeft, ColTextWarm);
-            Place(eyebrow.gameObject, new Vector2(0,1), new Vector2(0,1), new Vector2(0,1), new Vector2(126,-20), new Vector2(180,22));
-            var name = NewText("BossName", rt, "MALVYN", 31, TextAnchor.UpperLeft, ColPurpleText);
-            Place(name.gameObject, new Vector2(0,1), new Vector2(0,1), new Vector2(0,1), new Vector2(126,-42), new Vector2(200,42));
+            Place(eyebrow.gameObject, new Vector2(0,1), new Vector2(0,1), new Vector2(0,1), new Vector2(112,-18), new Vector2(174,22));
+            var name = NewText("BossName", rt, "MALVYN", 28, TextAnchor.UpperLeft, ColPurpleText);
+            Place(name.gameObject, new Vector2(0,1), new Vector2(0,1), new Vector2(0,1), new Vector2(112,-40), new Vector2(184,36));
             name.fontStyle = FontStyle.Bold;
-            var sub = NewText("BossSub", rt, "THE CURSED SCHOLAR", 15, TextAnchor.UpperLeft, new Color(0.82f,0.66f,0.95f));
-            Place(sub.gameObject, new Vector2(0,1), new Vector2(0,1), new Vector2(0,1), new Vector2(126,-84), new Vector2(210,24));
+            var sub = NewText("BossSub", rt, "THE CURSED SCHOLAR", 13, TextAnchor.UpperLeft, new Color(0.82f,0.66f,0.95f));
+            Place(sub.gameObject, new Vector2(0,1), new Vector2(0,1), new Vector2(0,1), new Vector2(112,-76), new Vector2(198,20));
 
-            BuildHpBar(rt, new Vector2(18,-124), new Vector2(324,22), out hpFill, out hpText);
+            BuildHpBar(rt, new Vector2(16,-108), new Vector2(310,18), out hpFill, out hpText);
 
-            var quote = NewText("BossQuote", rt, "\"Heh heh heh...\nThe weak don't deserve\nthe right to draw.\"", 16, TextAnchor.UpperLeft, new Color(0.84f,0.67f,1f));
-            Place(quote.gameObject, new Vector2(0,1), new Vector2(0,1), new Vector2(0,1), new Vector2(30,-158), new Vector2(178,76));
-
-            enemyDeckText = NewText("EnemyDeck", rt, "", 14, TextAnchor.UpperRight, ColTextWarm);
-            Place(enemyDeckText.gameObject, new Vector2(1,0), new Vector2(1,0), new Vector2(1,0), new Vector2(-24,46), new Vector2(110,22));
-            enemyDiscardText = NewText("EnemyDiscard", rt, "", 14, TextAnchor.UpperRight, ColTextWarm);
-            Place(enemyDiscardText.gameObject, new Vector2(1,0), new Vector2(1,0), new Vector2(1,0), new Vector2(-24,20), new Vector2(110,22));
+            var quote = NewText("BossQuote", rt, "\"Heh heh heh...\nThe weak don't deserve\nthe right to draw.\"", 14, TextAnchor.UpperLeft, new Color(0.84f,0.67f,1f));
+            Place(quote.gameObject, new Vector2(0,1), new Vector2(0,1), new Vector2(0,1), new Vector2(26,-154), new Vector2(200,58));
 
             var pipRow = new GameObject("BossEnergy", typeof(RectTransform), typeof(HorizontalLayoutGroup));
             pipRow.transform.SetParent(rt, false);
-            Place(pipRow, new Vector2(1,1), new Vector2(1,1), new Vector2(1,1), new Vector2(-142,-112), new Vector2(112,20));
+            Place(pipRow, new Vector2(1,1), new Vector2(1,1), new Vector2(1,1), new Vector2(-128,-132), new Vector2(92,16));
             var prl = pipRow.GetComponent<HorizontalLayoutGroup>();
             prl.spacing = 4; prl.childAlignment = TextAnchor.MiddleLeft;
             prl.childControlWidth = true; prl.childControlHeight = true;
@@ -604,12 +600,12 @@ namespace CardBattle
             {
                 var pip = NewImage("Pip", pipRow.transform, ColEnergyOn);
                 var le = pip.gameObject.AddComponent<LayoutElement>();
-                le.preferredWidth = 18; le.preferredHeight = 18;
+                le.preferredWidth = 15; le.preferredHeight = 15;
                 AddGoldOutline(pip, 0.5f, new Color(0.85f,0.62f,0.25f,0.7f));
                 pips.Add(pip);
             }
-            enText = NewText("BossEnergyText", rt, "", 14, TextAnchor.UpperRight, ColTextWarm);
-            Place(enText.gameObject, new Vector2(1,1), new Vector2(1,1), new Vector2(1,1), new Vector2(-18,-92), new Vector2(92,22));
+            enText = NewText("BossEnergyText", rt, "", 13, TextAnchor.UpperRight, ColTextWarm);
+            Place(enText.gameObject, new Vector2(1,1), new Vector2(1,1), new Vector2(1,1), new Vector2(-18,-130), new Vector2(92,18));
             enText.fontStyle = FontStyle.Bold;
 
             return box;
@@ -618,14 +614,14 @@ namespace CardBattle
         Image BuildPlayerStatus(Transform root, out RectTransform hpFill, out Text hpText)
         {
             var box = NewImage("PlayerStatus", root, ColPanel);
-            var rt = Place(box.gameObject, new Vector2(1,1), new Vector2(1,1), new Vector2(1,1), new Vector2(-28,-24), new Vector2(324,134));
+            var rt = Place(box.gameObject, new Vector2(1,1), new Vector2(1,1), new Vector2(1,1), new Vector2(-28,-24), new Vector2(264,96));
             AddGoldOutline(box);
 
             var btn = box.gameObject.AddComponent<Button>();
             btn.onClick.AddListener(() => OnPortraitClicked(false));
 
             var portraitFrame = NewImage("PortraitFrame", rt, new Color(0.02f,0.018f,0.024f,0.95f));
-            Place(portraitFrame.gameObject, new Vector2(1,1), new Vector2(1,1), new Vector2(1,1), new Vector2(-14,-14), new Vector2(96,96));
+            Place(portraitFrame.gameObject, new Vector2(1,1), new Vector2(1,1), new Vector2(1,1), new Vector2(-12,-12), new Vector2(72,72));
             AddGoldOutline(portraitFrame);
             var portrait = NewImage("Portrait", portraitFrame.rectTransform, Color.white);
             Stretch(portrait.rectTransform);
@@ -634,10 +630,10 @@ namespace CardBattle
             portrait.sprite = playerPortraitSprite;
             portrait.preserveAspect = false;
 
-            var name = NewText("PlayerName", rt, "YOU", 23, TextAnchor.UpperRight, ColTextWarm);
-            Place(name.gameObject, new Vector2(1,1), new Vector2(1,1), new Vector2(1,1), new Vector2(-126,-20), new Vector2(170,34));
+            var name = NewText("PlayerName", rt, "YOU", 20, TextAnchor.UpperRight, ColTextWarm);
+            Place(name.gameObject, new Vector2(1,1), new Vector2(1,1), new Vector2(1,1), new Vector2(-96,-16), new Vector2(150,28));
             name.fontStyle = FontStyle.Bold;
-            BuildHpBar(rt, new Vector2(-292,-68), new Vector2(176,22), out hpFill, out hpText, true);
+            BuildHpBar(rt, new Vector2(16,-54), new Vector2(154,18), out hpFill, out hpText);
 
             return box;
         }
@@ -662,19 +658,19 @@ namespace CardBattle
         void BuildEnergyDial(Transform root, out Text enText, List<Image> pips)
         {
             var dial = NewImage("EnergyDial", root, new Color(0.02f,0.018f,0.024f,0.88f));
-            var rt = Place(dial.gameObject, new Vector2(0,0), new Vector2(0,0), new Vector2(0,0), new Vector2(28,24), new Vector2(168,118));
+            var rt = Place(dial.gameObject, new Vector2(0,0), new Vector2(0,0), new Vector2(0,0), new Vector2(28,24), new Vector2(156,112));
             AddGoldOutline(dial);
 
-            enText = NewText("EnergyText", rt, "", 33, TextAnchor.MiddleCenter, ColTextWarm);
-            Place(enText.gameObject, new Vector2(.5f,.5f), new Vector2(.5f,.5f), new Vector2(.5f,.5f), new Vector2(0,10), new Vector2(120,62));
+            enText = NewText("EnergyText", rt, "", 30, TextAnchor.MiddleCenter, ColTextWarm);
+            Place(enText.gameObject, new Vector2(.5f,1), new Vector2(.5f,1), new Vector2(.5f,1), new Vector2(0,-18), new Vector2(112,34));
             enText.fontStyle = FontStyle.Bold;
 
             var label = NewText("EnergyLabel", rt, "ENERGY", 14, TextAnchor.MiddleCenter, new Color(0.78f,0.68f,0.52f));
-            Place(label.gameObject, new Vector2(.5f,0), new Vector2(.5f,0), new Vector2(.5f,0), new Vector2(0,22), new Vector2(110,22));
+            Place(label.gameObject, new Vector2(.5f,1), new Vector2(.5f,1), new Vector2(.5f,1), new Vector2(0,-50), new Vector2(110,20));
 
             var pipRow = new GameObject("PlayerEnergyPips", typeof(RectTransform), typeof(HorizontalLayoutGroup));
             pipRow.transform.SetParent(rt, false);
-            Place(pipRow, new Vector2(.5f,0), new Vector2(.5f,0), new Vector2(.5f,0), new Vector2(0,8), new Vector2(116,20));
+            Place(pipRow, new Vector2(.5f,0), new Vector2(.5f,0), new Vector2(.5f,0), new Vector2(0,14), new Vector2(104,18));
             var prl = pipRow.GetComponent<HorizontalLayoutGroup>();
             prl.spacing = 6; prl.childAlignment = TextAnchor.MiddleCenter;
             prl.childControlWidth = true; prl.childControlHeight = true;
@@ -683,7 +679,7 @@ namespace CardBattle
             {
                 var pip = NewImage("Pip", pipRow.transform, ColEnergyPlayer);
                 var le = pip.gameObject.AddComponent<LayoutElement>();
-                le.preferredWidth = 20; le.preferredHeight = 20;
+                le.preferredWidth = 18; le.preferredHeight = 18;
                 AddGoldOutline(pip, 0.5f, new Color(0.85f,0.62f,0.25f,0.72f));
                 pips.Add(pip);
             }
@@ -691,34 +687,34 @@ namespace CardBattle
 
         void BuildDeckStack(Transform root)
         {
-            var panel = NewImage("DeckStack", root, new Color(0.018f,0.015f,0.018f,0.84f));
-            var rt = Place(panel.gameObject, new Vector2(1,.5f), new Vector2(1,.5f), new Vector2(1,.5f), new Vector2(-36,0), new Vector2(152,144));
+            var panel = NewImage("DeckStack", root, new Color(0.018f,0.015f,0.018f,0.78f));
+            var rt = Place(panel.gameObject, new Vector2(1,.5f), new Vector2(1,.5f), new Vector2(1,.5f), new Vector2(-42,-8), new Vector2(132,136));
             AddGoldOutline(panel);
 
             var icon = NewImage("DeckIcon", rt, Color.white);
-            Place(icon.gameObject, new Vector2(0,1), new Vector2(0,1), new Vector2(0,1), new Vector2(18,-14), new Vector2(46,46));
+            Place(icon.gameObject, new Vector2(0,1), new Vector2(0,1), new Vector2(0,1), new Vector2(14,-14), new Vector2(36,36));
             icon.sprite = curseArtSprite;
             icon.preserveAspect = true;
-            var deckLabel = NewText("DeckLabel", rt, "DECK", 13, TextAnchor.UpperLeft, new Color(0.78f,0.70f,0.58f));
-            Place(deckLabel.gameObject, new Vector2(0,1), new Vector2(0,1), new Vector2(0,1), new Vector2(70,-20), new Vector2(70,20));
-            deckText = NewText("DeckCount", rt, "", 29, TextAnchor.UpperLeft, ColTextWarm);
-            Place(deckText.gameObject, new Vector2(0,1), new Vector2(0,1), new Vector2(0,1), new Vector2(70,-40), new Vector2(70,36));
+            var deckLabel = NewText("DeckLabel", rt, "DECK", 12, TextAnchor.UpperLeft, new Color(0.78f,0.70f,0.58f));
+            Place(deckLabel.gameObject, new Vector2(0,1), new Vector2(0,1), new Vector2(0,1), new Vector2(58,-16), new Vector2(60,18));
+            deckText = NewText("DeckCount", rt, "", 24, TextAnchor.UpperLeft, ColTextWarm);
+            Place(deckText.gameObject, new Vector2(0,1), new Vector2(0,1), new Vector2(0,1), new Vector2(58,-36), new Vector2(54,30));
             deckText.fontStyle = FontStyle.Bold;
 
             var line = NewImage("Divider", rt, new Color(0.67f,0.49f,0.25f,0.45f));
-            Place(line.gameObject, new Vector2(.5f,.5f), new Vector2(.5f,.5f), new Vector2(.5f,.5f), new Vector2(0,0), new Vector2(120,1));
+            Place(line.gameObject, new Vector2(0,1), new Vector2(0,1), new Vector2(0,1), new Vector2(14,-70), new Vector2(104,1));
 
-            var discardLabel = NewText("DiscardLabel", rt, "DISCARD", 13, TextAnchor.UpperLeft, new Color(0.78f,0.70f,0.58f));
-            Place(discardLabel.gameObject, new Vector2(0,0), new Vector2(0,0), new Vector2(0,0), new Vector2(70,52), new Vector2(76,20));
-            discardText = NewText("DiscardCount", rt, "", 29, TextAnchor.UpperLeft, ColTextWarm);
-            Place(discardText.gameObject, new Vector2(0,0), new Vector2(0,0), new Vector2(0,0), new Vector2(70,16), new Vector2(70,36));
+            var discardLabel = NewText("DiscardLabel", rt, "DISCARD", 12, TextAnchor.UpperCenter, new Color(0.78f,0.70f,0.58f));
+            Place(discardLabel.gameObject, new Vector2(.5f,1), new Vector2(.5f,1), new Vector2(.5f,1), new Vector2(0,-80), new Vector2(104,18));
+            discardText = NewText("DiscardCount", rt, "", 24, TextAnchor.UpperCenter, ColTextWarm);
+            Place(discardText.gameObject, new Vector2(.5f,1), new Vector2(.5f,1), new Vector2(.5f,1), new Vector2(0,-100), new Vector2(54,30));
             discardText.fontStyle = FontStyle.Bold;
         }
 
         void BuildPhaseList(Transform root)
         {
             var panel = NewImage("PhaseList", root, new Color(0.018f,0.016f,0.018f,0.78f));
-            var rt = Place(panel.gameObject, new Vector2(0,.5f), new Vector2(0,.5f), new Vector2(0,.5f), new Vector2(28,-122), new Vector2(168,182));
+            var rt = Place(panel.gameObject, new Vector2(0,.5f), new Vector2(0,.5f), new Vector2(0,.5f), new Vector2(28,-112), new Vector2(156,170));
             AddGoldOutline(panel, 0.8f, new Color(0.55f,0.38f,0.18f,0.68f));
 
             var title = NewText("PhaseTitle", rt, "TURN PHASE", 13, TextAnchor.MiddleCenter, ColTextWarm);
@@ -728,7 +724,7 @@ namespace CardBattle
             for (int i = 0; i < rows.Length; i++)
             {
                 var row = NewImage("PhaseRow", rt, i == 2 ? new Color(0.32f,0.12f,0.68f,0.72f) : new Color(1f,1f,1f,0.035f));
-                Place(row.gameObject, new Vector2(.5f,1), new Vector2(.5f,1), new Vector2(.5f,1), new Vector2(0,-50 - i * 26), new Vector2(142,24));
+                Place(row.gameObject, new Vector2(.5f,1), new Vector2(.5f,1), new Vector2(.5f,1), new Vector2(0,-48 - i * 24), new Vector2(132,22));
                 if (i == 2) AddGoldOutline(row, 0.6f, new Color(0.75f,0.42f,1f,0.74f));
                 var txt = NewText("PhaseText", row.rectTransform, rows[i], 12, TextAnchor.MiddleLeft, i == 2 ? Color.white : new Color(0.70f,0.66f,0.60f));
                 Place(txt.gameObject, new Vector2(0,0), new Vector2(1,1), new Vector2(.5f,.5f), new Vector2(10,0), new Vector2(-18,0));
@@ -740,9 +736,9 @@ namespace CardBattle
         {
             var go = new GameObject(name, typeof(RectTransform), typeof(HorizontalLayoutGroup));
             go.transform.SetParent(root, false);
-            var rt = Place(go, new Vector2(.5f,.5f), new Vector2(.5f,.5f), new Vector2(.5f,.5f), pos, new Vector2(650, 150));
+            var rt = Place(go, new Vector2(.5f,.5f), new Vector2(.5f,.5f), new Vector2(.5f,.5f), pos, new Vector2(580, 128));
             var h = go.GetComponent<HorizontalLayoutGroup>();
-            h.spacing = 14; h.childAlignment = TextAnchor.MiddleCenter;
+            h.spacing = 12; h.childAlignment = TextAnchor.MiddleCenter;
             h.childControlWidth = true; h.childControlHeight = true;
             h.childForceExpandWidth = false; h.childForceExpandHeight = false;
             return rt;
@@ -752,8 +748,8 @@ namespace CardBattle
         {
             var slot = NewImage("Slot", row, enemy ? ColSlotEnemy : ColSlot);
             var le = slot.gameObject.AddComponent<LayoutElement>();
-            le.preferredWidth = 112; le.preferredHeight = 146;
-            AddGoldOutline(slot, 0.8f, new Color(0.57f,0.39f,0.18f,0.54f));
+            le.preferredWidth = 96; le.preferredHeight = 126;
+            AddGoldOutline(slot, 0.6f, new Color(0.57f,0.39f,0.18f,0.42f));
             return slot.rectTransform;
         }
 
@@ -783,7 +779,7 @@ namespace CardBattle
             colors.disabledColor = new Color(0.04f,0.035f,0.04f,0.42f);
             btn.colors = colors;
             btn.onClick.AddListener(onClick);
-            var txt = NewText("Label", img.rectTransform, label, 28, TextAnchor.MiddleCenter, ColTextWarm);
+            var txt = NewText("Label", img.rectTransform, label, 23, TextAnchor.MiddleCenter, ColTextWarm);
             Stretch(txt.rectTransform); txt.fontStyle = FontStyle.Bold;
             return btn;
         }
@@ -797,12 +793,10 @@ namespace CardBattle
             SetBar(playerHpFill, (float)player.HP / player.MaxHP);
             enemyHpText.text  = $"{Mathf.Max(0,enemy.HP)} / {enemy.MaxHP}";
             playerHpText.text = $"{Mathf.Max(0,player.HP)} / {player.MaxHP}";
-            enemyEnText.text  = $"{enemy.Energy} / {enemy.MaxEnergy} ENERGY";
+            enemyEnText.text  = $"{enemy.Energy}/{enemy.MaxEnergy}";
             playerEnText.text = $"{player.Energy}/{player.MaxEnergy}";
             deckText.text = player.Deck.Count.ToString();
             discardText.text = player.Discard.Count.ToString();
-            enemyDeckText.text = $"DECK  {enemy.Deck.Count}";
-            enemyDiscardText.text = $"VOID  {enemy.Discard.Count}";
             SetPips(enemyPips, enemy.Energy, ColEnergyOn);
             SetPips(playerPips, player.Energy, ColEnergyPlayer);
 
@@ -871,7 +865,7 @@ namespace CardBattle
             else
             {
                 var le = card.gameObject.AddComponent<LayoutElement>();
-                le.preferredWidth = 122; le.preferredHeight = 168;
+                le.preferredWidth = 116; le.preferredHeight = 164;
             }
 
             AddGoldOutline(card, highlighted ? 2.4f : 1.2f, highlighted ? new Color(1f,0.88f,0.32f) : ColGold);
@@ -886,6 +880,9 @@ namespace CardBattle
 
             var name = NewText("Name", titleBar.rectTransform, ci.Data.Name.ToUpperInvariant(), fill ? 10 : 12, TextAnchor.MiddleCenter, ColTextWarm);
             Stretch(name.rectTransform);
+            name.rectTransform.offsetMin = new Vector2(8, 0);
+            name.rectTransform.offsetMax = new Vector2(fill ? -24 : -32, 0);
+            name.alignment = TextAnchor.MiddleLeft;
             name.fontStyle = FontStyle.Bold;
             name.horizontalOverflow = HorizontalWrapMode.Wrap;
             name.resizeTextForBestFit = true;
@@ -893,13 +890,13 @@ namespace CardBattle
             name.resizeTextMaxSize = fill ? 10 : 12;
 
             var cost = NewImage("Cost", card.rectTransform, ci.Data.Type == CardType.Magic ? ColAccent : new Color(0.09f,0.47f,0.88f));
-            Place(cost.gameObject, new Vector2(1,1), new Vector2(1,1), new Vector2(1,1), new Vector2(-6,-6), new Vector2(fill ? 20 : 24, fill ? 20 : 24));
+            Place(cost.gameObject, new Vector2(1,1), new Vector2(1,1), new Vector2(1,1), new Vector2(-6,-6), new Vector2(fill ? 18 : 24, fill ? 18 : 24));
             AddGoldOutline(cost, 0.7f, ColGold);
-            var costTxt = NewText("CostTxt", cost.rectTransform, ci.Data.Cost.ToString(), fill ? 12 : 15, TextAnchor.MiddleCenter, Color.white);
+            var costTxt = NewText("CostTxt", cost.rectTransform, ci.Data.Cost.ToString(), fill ? 11 : 15, TextAnchor.MiddleCenter, Color.white);
             Stretch(costTxt.rectTransform); costTxt.fontStyle = FontStyle.Bold;
 
             var artFrame = NewImage("ArtFrame", card.rectTransform, new Color(0f,0f,0f,0.62f));
-            Place(artFrame.gameObject, new Vector2(0,1), new Vector2(1,1), new Vector2(.5f,1), new Vector2(0,-38), new Vector2(-14, fill ? 58 : 74));
+            Place(artFrame.gameObject, new Vector2(0,1), new Vector2(1,1), new Vector2(.5f,1), new Vector2(0,-36), new Vector2(-14, fill ? 44 : 62));
             AddGoldOutline(artFrame, 0.5f, new Color(0.50f,0.34f,0.16f,0.7f));
 
             var art = NewImage("Art", artFrame.rectTransform, ci.Data.Tint);
@@ -916,15 +913,15 @@ namespace CardBattle
 
             var type = NewText("Type", card.rectTransform, isMonster ? "MONSTER" : (ci.Data.Effect == MagicEffect.Damage ? "SPELL - DAMAGE" : "SPELL - HEAL"),
                                fill ? 8 : 9, TextAnchor.MiddleCenter, new Color(0.78f,0.70f,0.58f));
-            Place(type.gameObject, new Vector2(0,1), new Vector2(1,1), new Vector2(.5f,1), new Vector2(0, fill ? -99 : -118), new Vector2(-10,16));
+            Place(type.gameObject, new Vector2(0,1), new Vector2(1,1), new Vector2(.5f,1), new Vector2(0, fill ? -82 : -104), new Vector2(-10,14));
 
             string rulesText = isMonster
                 ? $"{ci.Data.Attack} ATK / {(showCurrentHp ? ci.CurrentHealth : ci.Data.Health)} HP"
                 : ci.Data.Effect == MagicEffect.Damage
                     ? $"Deal {ci.Data.Amount} damage."
                     : $"Restore {ci.Data.Amount} HP.";
-            var rules = NewText("Rules", card.rectTransform, rulesText, fill ? 9 : 11, TextAnchor.UpperCenter, new Color(0.88f,0.82f,0.72f));
-            Place(rules.gameObject, new Vector2(0,0), new Vector2(1,0), new Vector2(.5f,0), new Vector2(0, fill ? 30 : 34), new Vector2(-14, fill ? 34 : 42));
+            var rules = NewText("Rules", card.rectTransform, rulesText, fill ? 8 : 9, TextAnchor.UpperCenter, new Color(0.88f,0.82f,0.72f));
+            Place(rules.gameObject, new Vector2(0,0), new Vector2(1,0), new Vector2(.5f,0), new Vector2(0, fill ? 26 : 36), new Vector2(-14, fill ? 22 : 20));
             rules.horizontalOverflow = HorizontalWrapMode.Wrap;
 
             if (isMonster)
