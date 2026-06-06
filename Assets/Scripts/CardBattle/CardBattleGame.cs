@@ -54,9 +54,61 @@ namespace CardBattle
         public CardInstance(CardData d) { Data = d; CurrentHealth = d.Health; }
     }
 
-    /// <summary>A duelist: player or enemy.</summary>
+    /// <summary>A named collection of card definitions. A deck belongs to a duelist.</summary>
+    public class Deck
+    {
+        public string Name;
+        public Duelist Owner;                                    // the duelist this deck belongs to
+        public readonly List<CardData> Cards = new List<CardData>();
+
+        public Deck(string name) { Name = name; }
+
+        /// <summary>Fluent helper: add <paramref name="count"/> copies of a card to the deck.</summary>
+        public Deck Add(CardData card, int count = 1)
+        {
+            for (int i = 0; i < count; i++) Cards.Add(card);
+            return this;
+        }
+
+        public int Count => Cards.Count;
+
+        /// <summary>Create fresh runtime instances of every card, ready to shuffle into a draw pile.</summary>
+        public List<CardInstance> BuildRuntime()
+        {
+            var r = new List<CardInstance>(Cards.Count);
+            foreach (var c in Cards) r.Add(new CardInstance(c.Clone()));
+            return r;
+        }
+    }
+
+    /// <summary>A persistent duelist identity. The player is a duelist – the main character. Owns one or more decks.</summary>
+    public class Duelist
+    {
+        public string Name;
+        public string Title;
+        public bool IsPlayer;            // the player duelist is the main character
+        public int MaxHP = 30;
+        public int MaxEnergy = 3;
+        public Color Theme = Color.white;
+
+        public readonly List<Deck> Decks = new List<Deck>();
+        public Deck ActiveDeck;          // the deck this duelist brings into the duel
+
+        public Duelist(string name, bool isPlayer) { Name = name; IsPlayer = isPlayer; }
+
+        public Deck AddDeck(Deck deck)
+        {
+            deck.Owner = this;
+            Decks.Add(deck);
+            if (ActiveDeck == null) ActiveDeck = deck;
+            return deck;
+        }
+    }
+
+    /// <summary>Runtime battle state for a duelist in a single duel.</summary>
     public class Combatant
     {
+        public Duelist Duelist;          // the identity this combatant is fighting as
         public string Name;
         public bool IsPlayer;
         public int MaxHP, HP;
@@ -125,6 +177,7 @@ namespace CardBattle
         static readonly Color ColPurpleText  = new Color(0.78f, 0.52f, 1f);
 
         // ----- state -----
+        Duelist playerDuelist, enemyDuelist;
         Combatant player, enemy;
         int turnNumber;
         bool playerTurn;
@@ -149,6 +202,13 @@ namespace CardBattle
         Button endTurnButton;
         GameObject gameOverPanel;
         Text gameOverText;
+
+        // collection viewer (remaining deck / discard pile)
+        GameObject collectionPanel;
+        RectTransform collectionGrid;
+        Text collectionTitle;
+        Button collectionDeckTab, collectionDiscardTab;
+        bool collectionShowsDiscard;
 
         // ================================================================
         void Awake()
@@ -177,11 +237,11 @@ namespace CardBattle
         // ---------------- setup ----------------
         void SetupGame()
         {
-            player = new Combatant { Name = "You",   IsPlayer = true,  MaxHP = StartHP, HP = StartHP, MaxEnergy = StartEnergy, Energy = StartEnergy };
-            enemy  = new Combatant { Name = "Malvyn", IsPlayer = false, MaxHP = StartHP, HP = StartHP, MaxEnergy = StartEnergy, Energy = StartEnergy };
+            playerDuelist = BuildPlayerDuelist();
+            enemyDuelist  = BuildMalvyn();
 
-            player.Deck = BuildPlayerDeck();
-            enemy.Deck  = BuildEnemyDeck();
+            player = CreateCombatant(playerDuelist);
+            enemy  = CreateCombatant(enemyDuelist);
             Shuffle(player.Deck);
             Shuffle(enemy.Deck);
 
@@ -194,39 +254,48 @@ namespace CardBattle
             log.Clear();
 
             for (int i = 0; i < StartingHand; i++) { Draw(player); Draw(enemy); }
-            Log("A duel begins against Malvyn, the Cursed Scholar.");
+            Log($"A duel begins against {enemyDuelist.Name}, {enemyDuelist.Title}.");
         }
 
-        List<CardInstance> BuildPlayerDeck()
+        // Build the runtime battle state for a duelist from their active deck.
+        Combatant CreateCombatant(Duelist d) => new Combatant
         {
-            var list = new List<CardData>();
-            Add(list, CardData.Monster("Stone Guardian", 2, 6, new Color(0.55f,0.65f,0.8f), taunt: true), 2);
-            Add(list, CardData.Monster("Dire Wolf",      3, 3, new Color(0.7f,0.5f,0.35f)), 2);
-            Add(list, CardData.Monster("Fire Imp",       4, 2, new Color(0.9f,0.45f,0.25f)), 2);
-            Add(list, CardData.Magic ("Strike", MagicEffect.Damage, 5, new Color(0.9f,0.3f,0.3f)), 3);
-            Add(list, CardData.Magic ("Bolt",   MagicEffect.Damage, 3, new Color(0.95f,0.8f,0.3f)), 2);
-            Add(list, CardData.Magic ("Mend",   MagicEffect.Heal,   5, ColHpFill), 2);
-            return Instantiate(list);
+            Duelist   = d,
+            Name      = d.Name,
+            IsPlayer  = d.IsPlayer,
+            MaxHP     = d.MaxHP,    HP     = d.MaxHP,
+            MaxEnergy = d.MaxEnergy, Energy = d.MaxEnergy,
+            Deck      = d.ActiveDeck.BuildRuntime(),
+        };
+
+        // The player – the main character – and their starting deck.
+        Duelist BuildPlayerDuelist()
+        {
+            var hero = new Duelist("You", isPlayer: true)
+            { Title = "the Wandering Hero", MaxHP = StartHP, MaxEnergy = StartEnergy, Theme = ColEnergyPlayer };
+            hero.AddDeck(new Deck("Adventurer's Kit")
+                .Add(CardData.Monster("Stone Guardian", 2, 6, new Color(0.55f,0.65f,0.8f), taunt: true), 2)
+                .Add(CardData.Monster("Dire Wolf",      3, 3, new Color(0.7f,0.5f,0.35f)), 2)
+                .Add(CardData.Monster("Fire Imp",       4, 2, new Color(0.9f,0.45f,0.25f)), 2)
+                .Add(CardData.Magic ("Strike", MagicEffect.Damage, 5, new Color(0.9f,0.3f,0.3f)), 3)
+                .Add(CardData.Magic ("Bolt",   MagicEffect.Damage, 3, new Color(0.95f,0.8f,0.3f)), 2)
+                .Add(CardData.Magic ("Mend",   MagicEffect.Heal,   5, ColHpFill), 2));
+            return hero;
         }
 
-        List<CardInstance> BuildEnemyDeck()
+        Duelist BuildMalvyn()
         {
-            var list = new List<CardData>();
-            Add(list, CardData.Monster("Cursed Wretch", 2, 4, ColAccent, taunt: true), 2);
-            Add(list, CardData.Monster("Shade",         3, 2, new Color(0.35f,0.3f,0.45f)), 2);
-            Add(list, CardData.Magic ("Soul Rip",  MagicEffect.Damage, 4, ColAccent), 3);
-            Add(list, CardData.Magic ("Dark Bolt", MagicEffect.Damage, 3, new Color(0.5f,0.3f,0.7f)), 2);
-            Add(list, CardData.Magic ("Drain",     MagicEffect.Heal,   4, new Color(0.4f,0.7f,0.5f)), 1);
-            return Instantiate(list);
+            var boss = new Duelist("Malvyn", isPlayer: false)
+            { Title = "the Cursed Scholar", MaxHP = StartHP, MaxEnergy = StartEnergy, Theme = ColAccent };
+            boss.AddDeck(new Deck("Cursed Grimoire")
+                .Add(CardData.Monster("Cursed Wretch", 2, 4, ColAccent, taunt: true), 2)
+                .Add(CardData.Monster("Shade",         3, 2, new Color(0.35f,0.3f,0.45f)), 2)
+                .Add(CardData.Magic ("Soul Rip",  MagicEffect.Damage, 4, ColAccent), 3)
+                .Add(CardData.Magic ("Dark Bolt", MagicEffect.Damage, 3, new Color(0.5f,0.3f,0.7f)), 2)
+                .Add(CardData.Magic ("Drain",     MagicEffect.Heal,   4, new Color(0.4f,0.7f,0.5f)), 1));
+            return boss;
         }
 
-        static void Add(List<CardData> list, CardData d, int count) { for (int i = 0; i < count; i++) list.Add(d); }
-        static List<CardInstance> Instantiate(List<CardData> defs)
-        {
-            var r = new List<CardInstance>();
-            foreach (var d in defs) r.Add(new CardInstance(d.Clone()));
-            return r;
-        }
         static void Shuffle<T>(List<T> l)
         {
             for (int i = l.Count - 1; i > 0; i--) { int j = Random.Range(0, i + 1); (l[i], l[j]) = (l[j], l[i]); }
@@ -624,6 +693,7 @@ namespace CardBattle
         void Restart()
         {
             gameOverPanel.SetActive(false);
+            CloseCollection();
             SetupGame();
             StartPlayerTurn(firstTurn: true);
         }
@@ -708,6 +778,7 @@ namespace CardBattle
             endTurnButton = BuildButton(root, "END\nTURN", new Vector2(1,0), new Vector2(-42,116), new Vector2(124,86), OnEndTurn);
 
             BuildGameOver(root);
+            BuildCollectionViewer(root);
         }
 
         void BuildLogo(Transform root)
@@ -880,6 +951,25 @@ namespace CardBattle
             discardText = NewText("DiscardCount", rt, "", 24, TextAnchor.UpperCenter, ColTextWarm);
             Place(discardText.gameObject, new Vector2(.5f,1), new Vector2(.5f,1), new Vector2(.5f,1), new Vector2(0,-100), new Vector2(54,30));
             discardText.fontStyle = FontStyle.Bold;
+
+            // click the deck or discard half to inspect the cards inside
+            AddPileButton(rt, new Vector2(0,-36), new Vector2(124,62), () => OpenCollection(false));
+            AddPileButton(rt, new Vector2(0,-100), new Vector2(124,62), () => OpenCollection(true));
+        }
+
+        // A near-invisible hotspot over part of the deck stack that opens the collection viewer.
+        void AddPileButton(Transform parent, Vector2 pos, Vector2 size, UnityEngine.Events.UnityAction onClick)
+        {
+            var hot = NewImage("PileHotspot", parent, new Color(1f,1f,1f,0.001f));
+            Place(hot.gameObject, new Vector2(.5f,1), new Vector2(.5f,1), new Vector2(.5f,1), pos, size);
+            var btn = hot.gameObject.AddComponent<Button>();
+            btn.targetGraphic = hot;
+            var colors = btn.colors;
+            colors.normalColor = new Color(1f,1f,1f,0.001f);
+            colors.highlightedColor = new Color(0.85f,0.7f,0.35f,0.16f);
+            colors.pressedColor = new Color(0.85f,0.7f,0.35f,0.28f);
+            btn.colors = colors;
+            btn.onClick.AddListener(onClick);
         }
 
         void BuildPhaseList(Transform root)
@@ -936,6 +1026,105 @@ namespace CardBattle
             gameOverPanel.SetActive(false);
         }
 
+        // Overlay that lists the cards still in your deck or in your discard pile.
+        void BuildCollectionViewer(Transform root)
+        {
+            // fully opaque backdrop – a modal screen that hides the battlefield until closed
+            var overlay = NewImage("CollectionOverlay", root, ColBG);
+            Stretch(overlay.rectTransform);
+            collectionPanel = overlay.gameObject;
+            if (backgroundSprite != null)
+            {
+                overlay.sprite = backgroundSprite;
+                overlay.color = new Color(0.18f, 0.16f, 0.20f); // darkened so card art stays readable
+                overlay.type = Image.Type.Simple;
+            }
+            // the backdrop captures every click: outside the frame it closes, and nothing leaks through to the board
+            var closeBg = overlay.gameObject.AddComponent<Button>();
+            closeBg.transition = Selectable.Transition.None;
+            closeBg.onClick.AddListener(CloseCollection);
+
+            var frame = NewImage("CollectionFrame", overlay.rectTransform, ColPanel);
+            var frt = Place(frame.gameObject, new Vector2(.5f,.5f), new Vector2(.5f,.5f), new Vector2(.5f,.5f), Vector2.zero, new Vector2(640, 660));
+            AddGoldOutline(frame, 1.6f, ColGold);
+            frame.raycastTarget = true; // absorbs clicks so they don't fall through to the close hotspot
+
+            collectionTitle = NewText("CollectionTitle", frt, "", 24, TextAnchor.MiddleCenter, ColTextWarm);
+            Place(collectionTitle.gameObject, new Vector2(.5f,1), new Vector2(.5f,1), new Vector2(.5f,1), new Vector2(0,-24), new Vector2(580,34));
+            collectionTitle.fontStyle = FontStyle.Bold;
+
+            collectionDeckTab    = BuildButton(frt, "DECK",    new Vector2(.5f,1), new Vector2(-84,-66), new Vector2(156,40), () => SwitchCollection(false));
+            collectionDiscardTab = BuildButton(frt, "DISCARD", new Vector2(.5f,1), new Vector2( 84,-66), new Vector2(156,40), () => SwitchCollection(true));
+
+            var gridGO = new GameObject("CollectionGrid", typeof(RectTransform), typeof(GridLayoutGroup));
+            gridGO.transform.SetParent(frt, false);
+            collectionGrid = (RectTransform)gridGO.transform;
+            Place(gridGO, new Vector2(.5f,1), new Vector2(.5f,1), new Vector2(.5f,1), new Vector2(0,-114), new Vector2(584,470));
+            var grid = gridGO.GetComponent<GridLayoutGroup>();
+            grid.cellSize = new Vector2(108, 150);
+            grid.spacing = new Vector2(8, 8);
+            grid.childAlignment = TextAnchor.UpperCenter;
+            grid.constraint = GridLayoutGroup.Constraint.FixedColumnCount;
+            grid.constraintCount = 5;
+
+            BuildButton(frt, "CLOSE", new Vector2(.5f,0), new Vector2(0,22), new Vector2(176,46), CloseCollection);
+
+            collectionPanel.SetActive(false);
+        }
+
+        void OpenCollection(bool discard)
+        {
+            collectionShowsDiscard = discard;
+            collectionPanel.SetActive(true);
+            RefreshCollection();
+        }
+
+        void SwitchCollection(bool discard)
+        {
+            collectionShowsDiscard = discard;
+            RefreshCollection();
+        }
+
+        void CloseCollection()
+        {
+            if (collectionPanel != null) collectionPanel.SetActive(false);
+        }
+
+        void RefreshCollection()
+        {
+            if (collectionPanel == null || !collectionPanel.activeSelf) return;
+
+            var pile = collectionShowsDiscard ? player.Discard : player.Deck;
+            collectionTitle.text = collectionShowsDiscard
+                ? $"DISCARD PILE — {pile.Count} CARD{(pile.Count == 1 ? "" : "S")}"
+                : $"{playerDuelist.ActiveDeck.Name.ToUpperInvariant()} — {pile.Count} CARD{(pile.Count == 1 ? "" : "S")} LEFT";
+
+            // the active tab is shown as non-interactable (greyed) to mark the current pile
+            collectionDeckTab.interactable    = collectionShowsDiscard;
+            collectionDiscardTab.interactable = !collectionShowsDiscard;
+
+            for (int k = collectionGrid.childCount - 1; k >= 0; k--) Destroy(collectionGrid.GetChild(k).gameObject);
+
+            // sort by cost then name so the draw order of the deck stays hidden
+            var cards = new List<CardInstance>(pile);
+            cards.Sort((a, b) =>
+            {
+                int c = a.Data.Cost.CompareTo(b.Data.Cost);
+                return c != 0 ? c : string.Compare(a.Data.Name, b.Data.Name, System.StringComparison.Ordinal);
+            });
+
+            foreach (var ci in cards)
+                BuildCardVisual(collectionGrid, ci, fill: false, showCurrentHp: false,
+                    onClick: null, selected: false, exhausted: false, taunt: ci.Data.Taunt, validTarget: false);
+
+            if (cards.Count == 0)
+            {
+                var empty = NewText("CollectionEmpty", collectionGrid, "(empty)", 18, TextAnchor.MiddleCenter, new Color(0.7f,0.64f,0.56f));
+                var le = empty.gameObject.AddComponent<LayoutElement>();
+                le.preferredWidth = 200; le.preferredHeight = 40;
+            }
+        }
+
         Button BuildButton(Transform parent, string label, Vector2 anchor, Vector2 pos, Vector2 size, UnityEngine.Events.UnityAction onClick)
         {
             var img = NewImage("Btn_" + label.Replace("\n", "_"), parent, new Color(0.055f,0.035f,0.025f,0.92f));
@@ -968,6 +1157,7 @@ namespace CardBattle
             playerEnText.text = $"{player.Energy}/{player.MaxEnergy}";
             deckText.text = player.Deck.Count.ToString();
             discardText.text = player.Discard.Count.ToString();
+            RefreshCollection(); // keep an open viewer in sync as the piles change
             SetPips(enemyPips, enemy.Energy, ColEnergyOn);
             SetPips(playerPips, player.Energy, ColEnergyPlayer);
 
