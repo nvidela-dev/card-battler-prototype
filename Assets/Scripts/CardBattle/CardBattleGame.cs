@@ -29,10 +29,14 @@ namespace CardBattle
         public MagicEffect Effect;
         public int Amount;
 
+        // Monster keywords
+        public bool Taunt;   // must be attacked before the hero / non-taunt monsters
+        public bool Charge;  // can attack the turn it is summoned
+
         public Color Tint = Color.white;
 
-        public static CardData Monster(string name, int atk, int hp, Color tint)
-            => new CardData { Name = name, Type = CardType.Monster, Attack = atk, Health = hp, Tint = tint };
+        public static CardData Monster(string name, int atk, int hp, Color tint, bool taunt = false, bool charge = false)
+            => new CardData { Name = name, Type = CardType.Monster, Attack = atk, Health = hp, Tint = tint, Taunt = taunt, Charge = charge };
 
         public static CardData Magic(string name, MagicEffect effect, int amount, Color tint)
             => new CardData { Name = name, Type = CardType.Magic, Effect = effect, Amount = amount, Tint = tint };
@@ -45,6 +49,8 @@ namespace CardBattle
     {
         public CardData Data;
         public int CurrentHealth;
+        public bool SummonedThisTurn; // summoning sickness – can't attack the turn it lands
+        public bool HasAttacked;      // each monster may attack once per turn
         public CardInstance(CardData d) { Data = d; CurrentHealth = d.Health; }
     }
 
@@ -124,7 +130,8 @@ namespace CardBattle
         bool playerTurn;
         bool gameOver;
         bool busy;                 // true while enemy is acting
-        CardInstance targetingCard; // magic awaiting a target
+        CardInstance targetingCard;   // magic awaiting a target
+        CardInstance selectedAttacker; // player monster chosen to attack, awaiting a target
         readonly List<string> log = new List<string>();
 
         // ----- ui refs -----
@@ -183,6 +190,7 @@ namespace CardBattle
             gameOver = false;
             busy = false;
             targetingCard = null;
+            selectedAttacker = null;
             log.Clear();
 
             for (int i = 0; i < StartingHand; i++) { Draw(player); Draw(enemy); }
@@ -192,7 +200,7 @@ namespace CardBattle
         List<CardInstance> BuildPlayerDeck()
         {
             var list = new List<CardData>();
-            Add(list, CardData.Monster("Stone Guardian", 2, 6, new Color(0.55f,0.65f,0.8f)), 2);
+            Add(list, CardData.Monster("Stone Guardian", 2, 6, new Color(0.55f,0.65f,0.8f), taunt: true), 2);
             Add(list, CardData.Monster("Dire Wolf",      3, 3, new Color(0.7f,0.5f,0.35f)), 2);
             Add(list, CardData.Monster("Fire Imp",       4, 2, new Color(0.9f,0.45f,0.25f)), 2);
             Add(list, CardData.Magic ("Strike", MagicEffect.Damage, 5, new Color(0.9f,0.3f,0.3f)), 3);
@@ -204,7 +212,7 @@ namespace CardBattle
         List<CardInstance> BuildEnemyDeck()
         {
             var list = new List<CardData>();
-            Add(list, CardData.Monster("Cursed Wretch", 2, 4, ColAccent), 2);
+            Add(list, CardData.Monster("Cursed Wretch", 2, 4, ColAccent, taunt: true), 2);
             Add(list, CardData.Monster("Shade",         3, 2, new Color(0.35f,0.3f,0.45f)), 2);
             Add(list, CardData.Magic ("Soul Rip",  MagicEffect.Damage, 4, ColAccent), 3);
             Add(list, CardData.Magic ("Dark Bolt", MagicEffect.Damage, 3, new Color(0.5f,0.3f,0.7f)), 2);
@@ -231,6 +239,7 @@ namespace CardBattle
             busy = false;
             turnNumber++;
             player.Energy = player.MaxEnergy;
+            ResetAttacks(player);
             if (!firstTurn) Draw(player);
             Log($"— Your turn ({turnNumber}) —");
             Refresh();
@@ -240,10 +249,8 @@ namespace CardBattle
         {
             if (!playerTurn || gameOver || busy) return;
             CancelTargeting();
-            Log("Your monsters attack!");
-            ResolveAttacks(player, enemy);
+            CancelAttack();
             Refresh();
-            if (CheckGameOver()) return;
             StartCoroutine(EnemyTurn());
         }
 
@@ -255,6 +262,7 @@ namespace CardBattle
             yield return new WaitForSeconds(0.5f);
 
             enemy.Energy = enemy.MaxEnergy;
+            ResetAttacks(enemy);
             Draw(enemy);
             Log($"— Malvyn's turn —");
             Refresh();
@@ -311,9 +319,29 @@ namespace CardBattle
 
             yield return new WaitForSeconds(0.25f);
             Log("Malvyn's monsters attack!");
-            ResolveAttacks(enemy, player);
             Refresh();
-            if (CheckGameOver()) yield break;
+
+            // each ready monster attacks one target, Hearthstone-style
+            for (int i = 0; i < 5; i++)
+            {
+                var attacker = enemy.Board[i];
+                if (!CanAttack(attacker)) continue;
+
+                yield return new WaitForSeconds(0.45f);
+                var target = ChooseEnemyAttackTarget(attacker);
+                if (target == null)
+                {
+                    Log($"{attacker.Data.Name} attacks you.");
+                    AttackHero(attacker, player);
+                }
+                else
+                {
+                    Log($"{attacker.Data.Name} attacks {target.Data.Name}.");
+                    AttackMinion(attacker, enemy, target, player);
+                }
+                Refresh();
+                if (CheckGameOver()) yield break;
+            }
 
             yield return new WaitForSeconds(0.4f);
             StartPlayerTurn();
@@ -340,6 +368,8 @@ namespace CardBattle
             int slot = c.FirstEmptySlot();
             if (slot < 0) return;
             card.CurrentHealth = card.Data.Health;
+            card.HasAttacked = false;
+            card.SummonedThisTurn = !card.Data.Charge;
             c.Board[slot] = card;
             c.Hand.Remove(card);
             c.Energy -= card.Data.Cost;
@@ -352,25 +382,82 @@ namespace CardBattle
             c.Discard.Add(card);
         }
 
-        // Active side's monsters strike the slot opposite them, or the face if unblocked.
-        void ResolveAttacks(Combatant attacker, Combatant defender)
+        // ---------------- combat ----------------
+        // A monster may attack if it survived since last turn and hasn't swung yet.
+        bool CanAttack(CardInstance m)
+            => m != null && !m.SummonedThisTurn && !m.HasAttacked && m.Data.Attack > 0;
+
+        bool HasTaunt(Combatant c)
+        {
+            for (int i = 0; i < 5; i++)
+                if (c.Board[i] != null && c.Board[i].Data.Taunt) return true;
+            return false;
+        }
+        bool EnemyHasTaunt() => HasTaunt(enemy);
+
+        // A board minion is a legal attack target only if no Taunt minion shields it.
+        bool IsValidAttackTarget(Combatant defender, CardInstance m)
+            => m != null && (!HasTaunt(defender) || m.Data.Taunt);
+
+        void ResetAttacks(Combatant c)
         {
             for (int i = 0; i < 5; i++)
             {
-                var m = attacker.Board[i];
+                var m = c.Board[i];
                 if (m == null) continue;
-                var blocker = defender.Board[i];
-                if (blocker != null) blocker.CurrentHealth -= m.Data.Attack;
-                else defender.HP = Mathf.Max(0, defender.HP - m.Data.Attack);
+                m.HasAttacked = false;
+                m.SummonedThisTurn = false;
             }
+        }
+
+        // Mutual combat: both monsters deal their Attack to each other.
+        void AttackMinion(CardInstance attacker, Combatant attackerSide, CardInstance defender, Combatant defenderSide)
+        {
+            defender.CurrentHealth -= attacker.Data.Attack;
+            attacker.CurrentHealth -= defender.Data.Attack;
+            attacker.HasAttacked = true;
+            CleanupDead(defenderSide);
+            CleanupDead(attackerSide);
+        }
+
+        void AttackHero(CardInstance attacker, Combatant defenderSide)
+        {
+            defenderSide.HP = Mathf.Max(0, defenderSide.HP - attacker.Data.Attack);
+            attacker.HasAttacked = true;
+        }
+
+        void CleanupDead(Combatant c)
+        {
             for (int i = 0; i < 5; i++)
             {
-                if (defender.Board[i] != null && defender.Board[i].CurrentHealth <= 0)
+                if (c.Board[i] != null && c.Board[i].CurrentHealth <= 0)
                 {
-                    defender.Discard.Add(defender.Board[i]);
-                    defender.Board[i] = null;
+                    Log($"{c.Board[i].Data.Name} is destroyed.");
+                    c.Discard.Add(c.Board[i]);
+                    c.Board[i] = null;
                 }
             }
+        }
+
+        // Enemy picks an attack target: forced into Taunt, else a favourable trade, else the hero.
+        CardInstance ChooseEnemyAttackTarget(CardInstance attacker)
+        {
+            CardInstance taunt = null, trade = null;
+            for (int i = 0; i < 5; i++)
+            {
+                var m = player.Board[i];
+                if (m == null) continue;
+                if (m.Data.Taunt)
+                {
+                    if (taunt == null || m.CurrentHealth < taunt.CurrentHealth) taunt = m;
+                    continue;
+                }
+                bool canKill = m.CurrentHealth <= attacker.Data.Attack;
+                bool survives = m.Data.Attack < attacker.CurrentHealth;
+                if (canKill && survives && (trade == null || m.Data.Attack > trade.Data.Attack)) trade = m;
+            }
+            if (HasTaunt(player)) return taunt;
+            return trade; // null => go face
         }
 
         // ---------------- player input ----------------
@@ -378,6 +465,7 @@ namespace CardBattle
         {
             if (!playerTurn || gameOver || busy) return;
 
+            CancelAttack();
             if (targetingCard != null && targetingCard != ci) CancelTargeting();
 
             if (player.Energy < ci.Data.Cost) { Log("Not enough energy."); Refresh(); return; }
@@ -400,36 +488,118 @@ namespace CardBattle
         {
             targetingCard = ci;
             string verb = ci.Data.Effect == MagicEffect.Damage ? "damage" : "heal";
-            hintText.text = $"Casting {ci.Data.Name} — click a portrait to {verb} (or the card again to cancel).";
+            hintText.text = $"Casting {ci.Data.Name} — click a monster or portrait to {verb} (or the card again to cancel).";
             Refresh();
         }
 
         void CancelTargeting()
         {
             targetingCard = null;
-            if (hintText != null) hintText.text = "";
+            if (hintText != null && selectedAttacker == null) hintText.text = "";
         }
 
-        void OnPortraitClicked(bool enemySide)
+        void CancelAttack()
         {
-            if (targetingCard == null || !playerTurn || gameOver) return;
-            var card = targetingCard;
-            var target = enemySide ? enemy : player;
+            selectedAttacker = null;
+            if (hintText != null && targetingCard == null) hintText.text = "";
+        }
 
+        // Click one of your own board monsters: cast a spell on it, or pick it as an attacker.
+        void OnPlayerMonsterClicked(CardInstance m)
+        {
+            if (!playerTurn || gameOver || busy) return;
+
+            if (targetingCard != null) { ResolveSpellOnMinion(targetingCard, m, player); return; }
+
+            if (selectedAttacker == m) { CancelAttack(); Refresh(); return; }
+            if (!CanAttack(m))
+            {
+                Log(m.SummonedThisTurn
+                    ? $"{m.Data.Name} can't attack the turn it's summoned."
+                    : $"{m.Data.Name} has already attacked.");
+                Refresh();
+                return;
+            }
+            selectedAttacker = m;
+            hintText.text = EnemyHasTaunt()
+                ? $"{m.Data.Name} attacks — you must strike a Taunt monster."
+                : $"{m.Data.Name} attacks — click an enemy monster or Malvyn.";
+            Refresh();
+        }
+
+        // Click an enemy board monster: cast a spell on it, or resolve a pending attack into it.
+        void OnEnemyMonsterClicked(CardInstance m)
+        {
+            if (!playerTurn || gameOver || busy) return;
+
+            if (targetingCard != null) { ResolveSpellOnMinion(targetingCard, m, enemy); return; }
+
+            if (selectedAttacker == null) return;
+            if (!IsValidAttackTarget(enemy, m)) { Log("You must attack a Taunt monster first."); Refresh(); return; }
+
+            var attacker = selectedAttacker;
+            Log($"{attacker.Data.Name} attacks {m.Data.Name}.");
+            AttackMinion(attacker, player, m, enemy);
+            CancelAttack();
+            Refresh();
+            CheckGameOver();
+        }
+
+        void ResolveSpellOnMinion(CardInstance card, CardInstance target, Combatant side)
+        {
             if (card.Data.Effect == MagicEffect.Damage)
             {
-                target.HP = Mathf.Max(0, target.HP - card.Data.Amount);
-                Log($"You cast {card.Data.Name} on {target.Name} (-{card.Data.Amount} HP).");
+                target.CurrentHealth -= card.Data.Amount;
+                Log($"You cast {card.Data.Name} on {target.Data.Name} (-{card.Data.Amount}).");
+                CleanupDead(side);
             }
             else
             {
-                target.HP = Mathf.Min(target.MaxHP, target.HP + card.Data.Amount);
-                Log($"You cast {card.Data.Name} on {target.Name} (+{card.Data.Amount} HP).");
+                target.CurrentHealth = Mathf.Min(target.Data.Health, target.CurrentHealth + card.Data.Amount);
+                Log($"You cast {card.Data.Name} on {target.Data.Name} (+{card.Data.Amount}).");
             }
             SpendToDiscard(player, card);
             CancelTargeting();
             Refresh();
             CheckGameOver();
+        }
+
+        void OnPortraitClicked(bool enemySide)
+        {
+            if (!playerTurn || gameOver || busy) return;
+
+            if (targetingCard != null)
+            {
+                var card = targetingCard;
+                var target = enemySide ? enemy : player;
+                if (card.Data.Effect == MagicEffect.Damage)
+                {
+                    target.HP = Mathf.Max(0, target.HP - card.Data.Amount);
+                    Log($"You cast {card.Data.Name} on {target.Name} (-{card.Data.Amount} HP).");
+                }
+                else
+                {
+                    target.HP = Mathf.Min(target.MaxHP, target.HP + card.Data.Amount);
+                    Log($"You cast {card.Data.Name} on {target.Name} (+{card.Data.Amount} HP).");
+                }
+                SpendToDiscard(player, card);
+                CancelTargeting();
+                Refresh();
+                CheckGameOver();
+                return;
+            }
+
+            // resolve a pending attack against the enemy hero
+            if (selectedAttacker != null && enemySide)
+            {
+                if (EnemyHasTaunt()) { Log("You must attack a Taunt monster first."); Refresh(); return; }
+                var attacker = selectedAttacker;
+                Log($"{attacker.Data.Name} attacks {enemy.Name}.");
+                AttackHero(attacker, enemy);
+                CancelAttack();
+                Refresh();
+                CheckGameOver();
+            }
         }
 
         bool CheckGameOver()
@@ -445,6 +615,7 @@ namespace CardBattle
             gameOver = true;
             busy = false;
             CancelTargeting();
+            CancelAttack();
             gameOverText.text = $"{title}\n<size=22>{sub}</size>";
             gameOverPanel.SetActive(true);
             Refresh();
@@ -803,10 +974,12 @@ namespace CardBattle
             turnText.text = playerTurn ? $"TURN {turnNumber}\nYOUR TURN" : "MALVYN\nTHINKING";
             logText.text = string.Join("\n", log);
 
-            // targeting highlight on portraits
-            bool t = targetingCard != null;
-            enemyBox.color  = t ? new Color(0.22f,0.09f,0.26f,0.92f) : ColPanel;
-            playerBox.color = t ? new Color(0.06f,0.16f,0.24f,0.92f) : ColPanel;
+            // highlight portraits: purple while a spell is targeting, red when the hero can be attacked
+            bool spellTargeting = targetingCard != null;
+            bool enemyFaceAttackable = selectedAttacker != null && !EnemyHasTaunt();
+            enemyBox.color  = spellTargeting ? new Color(0.22f,0.09f,0.26f,0.92f)
+                              : enemyFaceAttackable ? new Color(0.34f,0.08f,0.08f,0.92f) : ColPanel;
+            playerBox.color = spellTargeting ? new Color(0.06f,0.16f,0.24f,0.92f) : ColPanel;
 
             RebuildBoard(enemySlots, enemy, true);
             RebuildBoard(playerSlots, player, false);
@@ -832,13 +1005,26 @@ namespace CardBattle
                 pips[i].color = i < energy ? onColor : ColEnergyOff;
         }
 
-        void RebuildBoard(RectTransform[] slots, Combatant c, bool enemy)
+        void RebuildBoard(RectTransform[] slots, Combatant c, bool isEnemy)
         {
             for (int i = 0; i < 5; i++)
             {
                 var slot = slots[i];
                 for (int k = slot.childCount - 1; k >= 0; k--) Destroy(slot.GetChild(k).gameObject);
-                if (c.Board[i] != null) BuildCardVisual(slot, c.Board[i], fill: true, interactive: false, showCurrentHp: true);
+                var m = c.Board[i];
+                if (m == null) continue;
+
+                bool selected = !isEnemy && selectedAttacker == m;
+                bool exhausted = !isEnemy && playerTurn && !CanAttack(m);
+                bool validTarget = targetingCard != null
+                                   || (isEnemy && selectedAttacker != null && IsValidAttackTarget(enemy, m));
+                System.Action onClick = isEnemy
+                    ? (System.Action)(() => OnEnemyMonsterClicked(m))
+                    : (() => OnPlayerMonsterClicked(m));
+
+                BuildCardVisual(slot, m, fill: true, showCurrentHp: true,
+                    onClick: onClick, selected: selected, exhausted: exhausted,
+                    taunt: m.Data.Taunt, validTarget: validTarget);
             }
         }
 
@@ -846,14 +1032,21 @@ namespace CardBattle
         {
             for (int k = handPanel.childCount - 1; k >= 0; k--) Destroy(handPanel.GetChild(k).gameObject);
             foreach (var ci in player.Hand)
-                BuildCardVisual(handPanel, ci, fill: false, interactive: true, showCurrentHp: false);
+            {
+                var captured = ci;
+                bool affordable = player.Energy >= ci.Data.Cost && playerTurn && !busy && !gameOver;
+                BuildCardVisual(handPanel, ci, fill: false, showCurrentHp: false,
+                    onClick: () => OnHandCardClicked(captured), selected: targetingCard == ci,
+                    exhausted: !affordable, taunt: ci.Data.Taunt, validTarget: false);
+            }
         }
 
         // ----- card visual -----
-        void BuildCardVisual(Transform parent, CardInstance ci, bool fill, bool interactive, bool showCurrentHp)
+        void BuildCardVisual(Transform parent, CardInstance ci, bool fill, bool showCurrentHp,
+            System.Action onClick, bool selected, bool exhausted, bool taunt, bool validTarget)
         {
+            bool interactive = onClick != null;
             bool isMonster = ci.Data.Type == CardType.Monster;
-            bool highlighted = interactive && targetingCard == ci;
             var card = NewImage("Card_" + ci.Data.Name, parent, isMonster ? ColCardMonster : ColCardMagic);
             card.raycastTarget = interactive;
 
@@ -868,7 +1061,12 @@ namespace CardBattle
                 le.preferredWidth = 116; le.preferredHeight = 164;
             }
 
-            AddGoldOutline(card, highlighted ? 2.4f : 1.2f, highlighted ? new Color(1f,0.88f,0.32f) : ColGold);
+            float outlineW; Color outlineCol;
+            if (selected)         { outlineW = 2.6f; outlineCol = new Color(1f,0.88f,0.32f); }   // chosen attacker / casting
+            else if (validTarget) { outlineW = 2.2f; outlineCol = new Color(1f,0.40f,0.35f); }   // legal target
+            else if (taunt)       { outlineW = 2.2f; outlineCol = new Color(0.72f,0.80f,0.88f); } // Taunt shield
+            else                  { outlineW = 1.2f; outlineCol = ColGold; }
+            AddGoldOutline(card, outlineW, outlineCol);
 
             var inner = NewImage("Inner", card.rectTransform, new Color(1f,1f,1f,0.025f));
             Stretch(inner.rectTransform);
@@ -911,8 +1109,12 @@ namespace CardBattle
             }
             art.preserveAspect = false;
 
-            var type = NewText("Type", card.rectTransform, isMonster ? "MONSTER" : (ci.Data.Effect == MagicEffect.Damage ? "SPELL - DAMAGE" : "SPELL - HEAL"),
-                               fill ? 8 : 9, TextAnchor.MiddleCenter, new Color(0.78f,0.70f,0.58f));
+            string typeLabel = isMonster
+                ? (ci.Data.Taunt ? "MONSTER - TAUNT" : "MONSTER")
+                : (ci.Data.Effect == MagicEffect.Damage ? "SPELL - DAMAGE" : "SPELL - HEAL");
+            var type = NewText("Type", card.rectTransform, typeLabel,
+                               fill ? 8 : 9, TextAnchor.MiddleCenter,
+                               isMonster && ci.Data.Taunt ? new Color(0.78f,0.86f,0.95f) : new Color(0.78f,0.70f,0.58f));
             Place(type.gameObject, new Vector2(0,1), new Vector2(1,1), new Vector2(.5f,1), new Vector2(0, fill ? -82 : -104), new Vector2(-10,14));
 
             string rulesText = isMonster
@@ -946,12 +1148,11 @@ namespace CardBattle
 
             if (interactive)
             {
-                bool affordable = player.Energy >= ci.Data.Cost && playerTurn && !busy && !gameOver;
-                if (!affordable) card.color = Color.Lerp(card.color, Color.black, 0.42f);
+                if (exhausted) card.color = Color.Lerp(card.color, Color.black, 0.42f);
                 var btn = card.gameObject.AddComponent<Button>();
                 btn.targetGraphic = card;
-                var captured = ci;
-                btn.onClick.AddListener(() => OnHandCardClicked(captured));
+                var cb = onClick;
+                btn.onClick.AddListener(() => cb());
             }
         }
 
