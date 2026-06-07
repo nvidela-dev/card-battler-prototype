@@ -757,10 +757,10 @@ namespace CardBattle
             logText = NewText("Log", root, "", 12, TextAnchor.UpperCenter, new Color(0.86f,0.78f,0.92f));
             Place(logText.gameObject, new Vector2(.5f,1), new Vector2(.5f,1), new Vector2(.5f,1), new Vector2(0,-30), new Vector2(540,52));
 
-            var enemyRow = NewRow("EnemyBoard", root, new Vector2(0, 82));
+            var enemyRow = NewRow("EnemyBoard", root, new Vector2(0, 88));
             for (int i = 0; i < 5; i++) enemySlots[i] = BuildSlot(enemyRow, true);
 
-            var playerRow = NewRow("PlayerBoard", root, new Vector2(0, -72));
+            var playerRow = NewRow("PlayerBoard", root, new Vector2(0, -92));
             for (int i = 0; i < 5; i++) playerSlots[i] = BuildSlot(playerRow, false);
 
             var handGO = new GameObject("Hand", typeof(RectTransform), typeof(HorizontalLayoutGroup));
@@ -792,7 +792,7 @@ namespace CardBattle
             out RectTransform hpFill, out Text hpText, out Text enText)
         {
             var box = NewImage("DuelistFrame", root, ColPanel);
-            var rt = Place(box.gameObject, anchor, anchor, anchor, pos, new Vector2(312, 124));
+            var rt = Place(box.gameObject, anchor, anchor, anchor, pos, new Vector2(260, 104));
             AddGoldOutline(box);
 
             var btn = box.gameObject.AddComponent<Button>();
@@ -800,38 +800,38 @@ namespace CardBattle
 
             // portrait hugs the outer screen corner; the text column fills the inner side
             Vector2 portAnchor = mirror ? new Vector2(0,1) : new Vector2(1,1);
-            Vector2 portPos    = mirror ? new Vector2(12,-12) : new Vector2(-12,-12);
+            Vector2 portPos    = mirror ? new Vector2(10,-10) : new Vector2(-10,-10);
             var portraitFrame = NewImage("PortraitFrame", rt, new Color(0.02f,0.018f,0.024f,0.95f));
-            Place(portraitFrame.gameObject, portAnchor, portAnchor, portAnchor, portPos, new Vector2(84,84));
+            Place(portraitFrame.gameObject, portAnchor, portAnchor, portAnchor, portPos, new Vector2(72,72));
             AddGoldOutline(portraitFrame);
             var pimg = NewImage("Portrait", portraitFrame.rectTransform, portrait != null ? Color.white : new Color(0.1f,0.09f,0.12f));
             Stretch(pimg.rectTransform);
-            pimg.rectTransform.offsetMin = new Vector2(4,4);
-            pimg.rectTransform.offsetMax = new Vector2(-4,-4);
+            pimg.rectTransform.offsetMin = new Vector2(3,3);
+            pimg.rectTransform.offsetMax = new Vector2(-3,-3);
             if (portrait != null) pimg.sprite = portrait;
             pimg.preserveAspect = false;
 
             Vector2 txtAnchor = mirror ? new Vector2(1,1) : new Vector2(0,1);
             float dir = mirror ? -1f : 1f;   // x grows away from the outer corner
             TextAnchor align = mirror ? TextAnchor.UpperRight : TextAnchor.UpperLeft;
-            const float edge = 16f;
+            const float edge = 14f;
 
-            var name = NewText("Name", rt, title, 24, align, titleColor);
-            Place(name.gameObject, txtAnchor, txtAnchor, txtAnchor, new Vector2(dir*edge, -12), new Vector2(196,30));
+            var name = NewText("Name", rt, title, 20, align, titleColor);
+            Place(name.gameObject, txtAnchor, txtAnchor, txtAnchor, new Vector2(dir*edge, -10), new Vector2(160,26));
             name.fontStyle = FontStyle.Bold;
 
             if (!string.IsNullOrEmpty(subtitle))
             {
-                var sub = NewText("Sub", rt, subtitle, 12, align, new Color(0.82f,0.74f,0.62f));
-                Place(sub.gameObject, txtAnchor, txtAnchor, txtAnchor, new Vector2(dir*edge, -44), new Vector2(210,18));
+                var sub = NewText("Sub", rt, subtitle, 11, align, new Color(0.82f,0.74f,0.62f));
+                Place(sub.gameObject, txtAnchor, txtAnchor, txtAnchor, new Vector2(dir*edge, -34), new Vector2(180,16));
             }
 
-            BuildHpBar(rt, new Vector2(dir*edge, -66), new Vector2(196,20), out hpFill, out hpText, rightAnchor: mirror);
+            BuildHpBar(rt, new Vector2(dir*edge, -54), new Vector2(160,18), out hpFill, out hpText, rightAnchor: mirror);
 
             // energy pips sit directly under the HP bar, on the same inner edge
             var pipRow = new GameObject("EnergyPips", typeof(RectTransform), typeof(HorizontalLayoutGroup));
             pipRow.transform.SetParent(rt, false);
-            Place(pipRow, txtAnchor, txtAnchor, txtAnchor, new Vector2(dir*edge, -92), new Vector2(120,18));
+            Place(pipRow, txtAnchor, txtAnchor, txtAnchor, new Vector2(dir*edge, -78), new Vector2(110,16));
             var prl = pipRow.GetComponent<HorizontalLayoutGroup>();
             prl.spacing = 5; prl.childAlignment = mirror ? TextAnchor.MiddleRight : TextAnchor.MiddleLeft;
             prl.childControlWidth = true; prl.childControlHeight = true;
@@ -840,12 +840,12 @@ namespace CardBattle
             {
                 var pip = NewImage("Pip", pipRow.transform, energyColor);
                 var le = pip.gameObject.AddComponent<LayoutElement>();
-                le.preferredWidth = 16; le.preferredHeight = 16;
+                le.preferredWidth = 14; le.preferredHeight = 14;
                 AddGoldOutline(pip, 0.5f, new Color(0.85f,0.62f,0.25f,0.72f));
                 pips.Add(pip);
             }
-            enText = NewText("EnergyText", rt, "", 14, align, ColTextWarm);
-            Place(enText.gameObject, txtAnchor, txtAnchor, txtAnchor, new Vector2(dir*(edge+72), -91), new Vector2(60,18));
+            enText = NewText("EnergyText", rt, "", 13, align, ColTextWarm);
+            Place(enText.gameObject, txtAnchor, txtAnchor, txtAnchor, new Vector2(dir*(edge+60), -77), new Vector2(54,16));
             enText.fontStyle = FontStyle.Bold;
 
             return box;
@@ -919,7 +919,7 @@ namespace CardBattle
         {
             var go = new GameObject(name, typeof(RectTransform), typeof(HorizontalLayoutGroup));
             go.transform.SetParent(root, false);
-            var rt = Place(go, new Vector2(.5f,.5f), new Vector2(.5f,.5f), new Vector2(.5f,.5f), pos, new Vector2(580, 128));
+            var rt = Place(go, new Vector2(.5f,.5f), new Vector2(.5f,.5f), new Vector2(.5f,.5f), pos, new Vector2(640, 172));
             var h = go.GetComponent<HorizontalLayoutGroup>();
             h.spacing = 12; h.childAlignment = TextAnchor.MiddleCenter;
             h.childControlWidth = true; h.childControlHeight = true;
@@ -931,7 +931,7 @@ namespace CardBattle
         {
             var slot = NewImage("Slot", row, enemy ? ColSlotEnemy : ColSlot);
             var le = slot.gameObject.AddComponent<LayoutElement>();
-            le.preferredWidth = 96; le.preferredHeight = 126;
+            le.preferredWidth = 116; le.preferredHeight = 164;   // match the hand-card size
             AddGoldOutline(slot, 0.6f, new Color(0.57f,0.39f,0.18f,0.42f));
             return slot.rectTransform;
         }
