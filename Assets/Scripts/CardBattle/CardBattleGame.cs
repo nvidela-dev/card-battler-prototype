@@ -214,6 +214,10 @@ namespace CardBattle
         Button collectionDeckTab, collectionDiscardTab;
         bool collectionShowsDiscard;
 
+        // card zoom viewer (right-click any card for a large preview)
+        GameObject cardZoomPanel;
+        RectTransform cardZoomHolder;
+
         // ================================================================
         void Awake()
         {
@@ -696,6 +700,7 @@ namespace CardBattle
         {
             gameOverPanel.SetActive(false);
             CloseCollection();
+            CloseCardZoom();
             SetupGame();
             StartPlayerTurn(firstTurn: true);
         }
@@ -780,6 +785,7 @@ namespace CardBattle
 
             BuildGameOver(root);
             BuildCollectionViewer(root);
+            BuildCardZoomViewer(root);
         }
 
         // A compact duelist HUD frame: portrait in the outer corner, name + subtitle,
@@ -1012,6 +1018,59 @@ namespace CardBattle
             if (collectionPanel != null) collectionPanel.SetActive(false);
         }
 
+        // ----- card zoom (right-click preview) -----
+        void BuildCardZoomViewer(Transform root)
+        {
+            // dim full-screen backdrop; any click closes it
+            var overlay = NewImage("CardZoomOverlay", root, new Color(0f, 0f, 0f, 0.82f));
+            Stretch(overlay.rectTransform);
+            cardZoomPanel = overlay.gameObject;
+            var close = overlay.gameObject.AddComponent<Button>();
+            close.transition = Selectable.Transition.None;
+            close.onClick.AddListener(CloseCardZoom);
+
+            // centred holder that the enlarged card is rebuilt into
+            cardZoomHolder = NewRect("CardZoomHolder", overlay.rectTransform);
+            Place(cardZoomHolder.gameObject, new Vector2(.5f,.5f), new Vector2(.5f,.5f), new Vector2(.5f,.5f), Vector2.zero, new Vector2(400, 580));
+
+            var hint = NewText("CardZoomHint", overlay.rectTransform, "Click anywhere to close", 14, TextAnchor.LowerCenter, new Color(0.82f,0.74f,0.60f));
+            Place(hint.gameObject, new Vector2(.5f,0), new Vector2(.5f,0), new Vector2(.5f,0), new Vector2(0,30), new Vector2(620,24));
+
+            cardZoomPanel.SetActive(false);
+        }
+
+        void ShowCardZoom(CardInstance ci)
+        {
+            if (cardZoomHolder == null) return;
+            for (int k = cardZoomHolder.childCount - 1; k >= 0; k--) Destroy(cardZoomHolder.GetChild(k).gameObject);
+
+            // One layout cell sizes itself to the card's preferred 116x164 via ContentSizeFitter,
+            // then we scale it up uniformly so every label/stat scales with the art.
+            var cell = new GameObject("ZoomCell", typeof(RectTransform), typeof(HorizontalLayoutGroup), typeof(ContentSizeFitter));
+            cell.transform.SetParent(cardZoomHolder, false);
+            var crt = (RectTransform)cell.transform;
+            crt.anchorMin = crt.anchorMax = crt.pivot = new Vector2(.5f,.5f);
+            crt.anchoredPosition = Vector2.zero;
+            crt.localScale = Vector3.one * 3.0f;
+            var hlg = cell.GetComponent<HorizontalLayoutGroup>();
+            hlg.childAlignment = TextAnchor.MiddleCenter;
+            hlg.childControlWidth = hlg.childControlHeight = true;
+            hlg.childForceExpandWidth = hlg.childForceExpandHeight = false;
+            var fitter = cell.GetComponent<ContentSizeFitter>();
+            fitter.horizontalFit = fitter.verticalFit = ContentSizeFitter.FitMode.PreferredSize;
+
+            BuildCardVisual(crt, ci, fill: false, showCurrentHp: true, onClick: null,
+                selected: false, exhausted: false, taunt: ci.Data.Taunt, validTarget: false, allowZoom: false);
+
+            cardZoomPanel.SetActive(true);
+            cardZoomPanel.transform.SetAsLastSibling(); // render above the collection viewer if it is open
+        }
+
+        void CloseCardZoom()
+        {
+            if (cardZoomPanel != null) cardZoomPanel.SetActive(false);
+        }
+
         void RefreshCollection()
         {
             if (collectionPanel == null || !collectionPanel.activeSelf) return;
@@ -1155,14 +1214,14 @@ namespace CardBattle
 
         // ----- card visual -----
         void BuildCardVisual(Transform parent, CardInstance ci, bool fill, bool showCurrentHp,
-            System.Action onClick, bool selected, bool exhausted, bool taunt, bool validTarget)
+            System.Action onClick, bool selected, bool exhausted, bool taunt, bool validTarget, bool allowZoom = true)
         {
             bool interactive = onClick != null;
             bool isMonster = ci.Data.Type == CardType.Monster;
             var fullArt = FullArtFor(ci.Data);
             var card = NewImage("Card_" + ci.Data.Name, parent,
                 fullArt != null ? Color.white : (isMonster ? ColCardMonster : ColCardMagic));
-            card.raycastTarget = interactive;
+            card.raycastTarget = interactive || allowZoom;
             if (fullArt != null) { card.sprite = fullArt; card.preserveAspect = false; }
 
             if (fill)
@@ -1280,6 +1339,13 @@ namespace CardBattle
                 btn.targetGraphic = card;
                 var cb = onClick;
                 btn.onClick.AddListener(() => cb());
+            }
+
+            // right-click any card for a large preview (coexists with the left-click Button)
+            if (allowZoom)
+            {
+                var zoomed = ci;
+                card.gameObject.AddComponent<RightClickHandler>().OnRightClick = () => ShowCardZoom(zoomed);
             }
         }
 
@@ -1404,6 +1470,17 @@ namespace CardBattle
         static void AddLetterSpacing(Text t, float pixels)
         {
             t.gameObject.AddComponent<LetterSpacing>().Spacing = pixels;
+        }
+    }
+
+    /// <summary>Invokes a callback when the graphic is clicked with the right mouse button.</summary>
+    public class RightClickHandler : MonoBehaviour, IPointerClickHandler
+    {
+        public System.Action OnRightClick;
+
+        public void OnPointerClick(PointerEventData eventData)
+        {
+            if (eventData.button == PointerEventData.InputButton.Right) OnRightClick?.Invoke();
         }
     }
 
